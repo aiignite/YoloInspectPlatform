@@ -1,0 +1,10 @@
+{
+  "name": "YoloCheck - YOLO工业视觉生产监控与模型加速系统",
+  "description": "基于YOLO与计算机视觉的工业生产过程监控系统，集成高速图像推理引擎、自适应ROI加速、模型量化推理与多路摄像头实时监控分析。",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
