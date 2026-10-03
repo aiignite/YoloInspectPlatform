@@ -39,6 +39,7 @@ import {
   CloudQueue,
   FactCheck,
   TaskAlt,
+  WorkspacePremium,
   Storage,
   People,
   DeviceHub,
@@ -284,6 +285,10 @@ const MainLayout: React.FC = () => {
               <ListItemButton selected={isCurrent('/video-learning')} onClick={() => navigate('/video-learning')} sx={{ borderRadius: 2, mb: 0.25 }}>
                 <ListItemIcon sx={{ minWidth: 32 }}><Movie fontSize="small" /></ListItemIcon>
                 <ListItemText primary={<Typography variant="body2" sx={{ fontSize: 13 }}>SOP动作分解与标定</Typography>} />
+              </ListItemButton>
+              <ListItemButton selected={isCurrent('/golden-standard')} onClick={() => navigate('/golden-standard')} sx={{ borderRadius: 2, mb: 0.25 }}>
+                <ListItemIcon sx={{ minWidth: 32, color: '#f59e0b' }}><WorkspacePremium fontSize="small" /></ListItemIcon>
+                <ListItemText primary={<Typography variant="body2" sx={{ fontSize: 13, fontWeight: isCurrent('/golden-standard') ? 700 : 400 }}>黄金标准动作基准库</Typography>} />
               </ListItemButton>
               <ListItemButton selected={isCurrent('/sop-monitor')} onClick={() => navigate('/sop-monitor')} sx={{ borderRadius: 2, mb: 0.25 }}>
                 <ListItemIcon sx={{ minWidth: 32, color: '#1a73e8' }}><TaskAlt fontSize="small" /></ListItemIcon>

@@ -134,6 +134,7 @@ export const SopMonitor: React.FC = () => {
   ]);
 
   // Canvas visual toggles
+  const [activeSpecification, setActiveSpecification] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [showSkeleton, setShowSkeleton] = useState<boolean>(true);
   const [showBBoxes, setShowBBoxes] = useState<boolean>(true);
@@ -147,12 +148,24 @@ export const SopMonitor: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [statRes, evRes] = await Promise.all([
+        const [statRes, evRes, specRes] = await Promise.all([
           api.get('/sop-monitor/status'),
           api.get('/sop-monitor/events'),
+          api.get('/sop-monitor/active-specification'),
         ]);
         if (statRes.data) setMonitorStatus(statRes.data);
         if (evRes.data) setDeviationEvents(evRes.data);
+        if (specRes.data) {
+          setActiveSpecification(specRes.data);
+          if (specRes.data.template_name) {
+            setMonitorStatus((prev) => ({
+              ...prev,
+              template_name: specRes.data.template_name,
+              station_id: specRes.data.station_id || prev.station_id,
+              takt_time_target: specRes.data.total_cycle_sec || prev.takt_time_target,
+            }));
+          }
+        }
       } catch {
         // Fallback to local state if backend route takes a moment
       }
@@ -382,9 +395,14 @@ export const SopMonitor: React.FC = () => {
                   </h1>
                   <Tag color="cyan">在线视频推断</Tag>
                   <Tag color="green">Poka-Yoke防呆闭环</Tag>
+                  {activeSpecification?.doc_no && (
+                    <Tag color="gold">
+                      受控作业指导书: {activeSpecification.doc_no} ({activeSpecification.revision || 'Rev.1.0'})
+                    </Tag>
+                  )}
                 </div>
                 <p style={{ margin: '4px 0 0 0', opacity: 0.88, fontSize: 13 }}>
-                  实时工位: <strong>{monitorStatus.station_id}</strong> · 在线操作员: <strong>{monitorStatus.operator_name}</strong> · 当前规程: <strong>{monitorStatus.template_name}</strong>
+                  实时工位: <strong>{monitorStatus.station_id}</strong> · 在线操作员: <strong>{monitorStatus.operator_name}</strong> · 当前规程: <strong>{monitorStatus.template_name}</strong> · 标准单件节拍: <strong>{monitorStatus.takt_time_target}s</strong>
                 </p>
               </div>
             </Space>

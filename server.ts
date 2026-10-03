@@ -337,6 +337,181 @@ let videoTemplates: any[] = [
     status: 'completed',
     created_at: '2026-03-15T08:00:00Z',
   },
+  {
+    id: 3,
+    name: '高频传感器微点胶与外观视觉质检 (SOP-GLUE03)',
+    description: '包含精密点胶针头出胶轨迹、胶量厚度测算及瑕疵复核',
+    video_path: '/uploads/sample_glue.mp4',
+    duration_seconds: 9.8,
+    fps: 30,
+    frame_count: 294,
+    resolution: '1920x1080',
+    business_type: 'welding',
+    station_id: 'cam_glue_02',
+    learning_config: { focus_classes: ['dispenser_needle', 'sensor_housing', 'glue_track'], min_confidence: 0.45 },
+    sop_content: {
+      standard_steps: [
+        { step: 1, name: '针头Z轴下降寻位', standard_time_sec: 1.6, tolerance: 0.2 },
+        { step: 2, name: '环形轨迹微点胶注胶', standard_time_sec: 5.2, tolerance: 0.6 },
+        { step: 3, name: '激光位移测厚度与固化', standard_time_sec: 3.0, tolerance: 0.4 },
+      ]
+    },
+    workflow_summary: { total_cycles: 85, mean_cycle_sec: 9.8, adherence_rate: 99.5 },
+    status: 'completed',
+    created_at: '2026-03-20T08:00:00Z',
+  },
+];
+
+let activeSopSpecification: any = {
+  template_id: 1,
+  template_name: 'SMT贴片与元件引脚插入标准流程 (SOP-SMT01)',
+  doc_no: 'SOP-SMT-2026-001',
+  revision: 'Rev.1.3',
+  station_id: 'ST-SMT-A03',
+  product_line: 'SMT 高速产线 #01',
+  author: '工艺部 工业工程科 (IE)',
+  approved_by: '制造总监 / 质量主管',
+  effective_date: '2026-03-20',
+  total_cycle_sec: 10.5,
+  steps: [
+    {
+      step_order: 1,
+      step_name: 'PCB板基准对位与工装夹紧',
+      standard_sec: 2.5,
+      tolerance_sec: 0.5,
+      target_roi_name: '主装配工装基准区 (Assembly Nest)',
+      hand_action: '双手指尖平稳对位 (Hold)',
+      critical_check: '光纤传感器到位绿灯点亮，两基准孔销位严密对齐',
+      poka_yoke: '未夹紧前禁止吸嘴触发下降',
+    },
+    {
+      step_order: 2,
+      step_name: '精密元件拾取与插装对准',
+      standard_sec: 4.8,
+      tolerance_sec: 0.8,
+      target_roi_name: '料盒 1 号区 (Bin 1 - 0402电容)',
+      hand_action: '精密双指捏取 (8mm Fine Pinch)',
+      critical_check: '仅限料盒1取料，严禁进入料盒2或料盒3；手套ESD导通',
+      poka_yoke: '手部骨骼穿透非目标料盒即刻声光蜂鸣预警',
+    },
+    {
+      step_order: 3,
+      step_name: '电批恒扭矩锁螺丝固定',
+      standard_sec: 3.5,
+      tolerance_sec: 0.5,
+      target_roi_name: '螺栓锁紧工作区',
+      hand_action: '工具握持 (Power Grip) + 手腕自转',
+      critical_check: '电批扭力达到 0.45N·m 自动离合切断',
+      poka_yoke: '锁附动作漏做直接禁止推入下工序',
+    },
+    {
+      step_order: 4,
+      step_name: '一维/二维码条码扫描过站',
+      standard_sec: 1.5,
+      tolerance_sec: 0.4,
+      target_roi_name: '条码扫描区 (Barcode Scanner)',
+      hand_action: '条码枪瞄准下压',
+      critical_check: 'MES 系统过站状态回传成功 (HTTP 200 OK)',
+      poka_yoke: '扫码未通过阻挡气缸不抬起',
+    },
+    {
+      step_order: 5,
+      step_name: '平稳推入下道工序出板轨道',
+      standard_sec: 1.2,
+      tolerance_sec: 0.3,
+      target_roi_name: '下道接驳台 (Outfeed Conveyor)',
+      hand_action: '双手平推',
+      critical_check: '出板皮带轮传感器感应触发',
+      poka_yoke: '未完全离开治具严禁移入下一PCB',
+    },
+  ],
+};
+
+let goldenStandards: any[] = [
+  {
+    id: 1,
+    code: 'GS-SMT-001',
+    name: 'SMT贴片与高精器件插装大师级黄金标准 (Master Benchmark)',
+    description: '由全国技能大赛冠军高工示范录制，动作轨迹完全符合人体工程学与防静电规范，无多余虚步。',
+    master_operator: '高志远 (全国技能大赛冠军 / 特级技师)',
+    station_id: 'ST-SMT-A03',
+    business_type: 'assembly',
+    is_active: true,
+    total_duration_sec: 10.5,
+    tolerance_sec: 0.3,
+    video_path: '/uploads/sample_smt.mp4',
+    stability_score: 99.4,
+    created_at: '2026-03-10T10:00:00Z',
+    steps: [
+      { step_order: 1, name: 'PCB板定位到位与工装锁紧', standard_sec: 2.5, tolerance_sec: 0.3, golden_velocity_mms: 45, pinch_gap_mm: 22, target_roi: '主装配工装基准区', hand_action: '双手平稳对称对位' },
+      { step_order: 2, name: '料盒1精密器件拾取与下压插装', standard_sec: 4.8, tolerance_sec: 0.4, golden_velocity_mms: 82, pinch_gap_mm: 8.2, target_roi: '料盒1号区', hand_action: '精密双指微捏取 (Fine Pinch)' },
+      { step_order: 3, name: '双目视觉复核引脚平整度与锁附', standard_sec: 3.2, tolerance_sec: 0.3, golden_velocity_mms: 55, pinch_gap_mm: 18, target_roi: '螺栓锁紧工作区', hand_action: '工具全握持 (Power Grip)' },
+    ],
+    motion_signature: {
+      avg_speed_mms: 60.6,
+      max_acceleration_mms2: 180,
+      path_efficiency: 98.7,
+      tremor_jitter_px: 0.4,
+      smoothness_index: 0.96,
+      keypoint_envelope_bound: '±12px',
+    },
+  },
+  {
+    id: 2,
+    code: 'GS-SCREW-002',
+    name: '工业机箱螺丝自动锁紧与扭矩确认黄金标准',
+    description: '采用恒扭矩离合释放标定，电批同轴寻孔对位零晃动，节拍效率提升25%。',
+    master_operator: '李建军 (工匠技师 / 资深IE主管)',
+    station_id: 'ST-ASM-02',
+    business_type: 'assembly',
+    is_active: false,
+    total_duration_sec: 7.4,
+    tolerance_sec: 0.2,
+    video_path: '/uploads/sample_screw.mp4',
+    stability_score: 98.8,
+    created_at: '2026-03-15T14:30:00Z',
+    steps: [
+      { step_order: 1, name: '电批吸嘴抓取M3螺钉', standard_sec: 1.8, tolerance_sec: 0.2, golden_velocity_mms: 70, pinch_gap_mm: 12, target_roi: '螺钉供料盘', hand_action: '工具下压吸附' },
+      { step_order: 2, name: '同轴光学寻孔对位', standard_sec: 2.1, tolerance_sec: 0.3, golden_velocity_mms: 40, pinch_gap_mm: 20, target_roi: '机箱基座螺孔', hand_action: '微距对位' },
+      { step_order: 3, name: '恒扭矩锁紧直至离合器释放', standard_sec: 3.5, tolerance_sec: 0.3, golden_velocity_mms: 25, pinch_gap_mm: 20, target_roi: '紧固工装', hand_action: '垂直下压握持' },
+    ],
+    motion_signature: {
+      avg_speed_mms: 45.0,
+      max_acceleration_mms2: 120,
+      path_efficiency: 99.1,
+      tremor_jitter_px: 0.3,
+      smoothness_index: 0.98,
+      keypoint_envelope_bound: '±8px',
+    },
+  },
+  {
+    id: 3,
+    code: 'GS-GLUE-003',
+    name: '高频传感器微点胶与激光位移质检黄金标准',
+    description: '恒温恒压胶枪出胶，点胶环形轨迹连续无断胶，激光干涉测厚公差严格把控。',
+    master_operator: '赵雪 (光学装配大师 / 质量标兵)',
+    station_id: 'ST-GLUE-01',
+    business_type: 'welding',
+    is_active: false,
+    total_duration_sec: 9.8,
+    tolerance_sec: 0.3,
+    video_path: '/uploads/sample_glue.mp4',
+    stability_score: 99.2,
+    created_at: '2026-03-20T09:15:00Z',
+    steps: [
+      { step_order: 1, name: '点胶针头Z轴快速下降寻位', standard_sec: 1.6, tolerance_sec: 0.2, golden_velocity_mms: 90, pinch_gap_mm: 25, target_roi: '传感器腔体', hand_action: '工具平移' },
+      { step_order: 2, name: '环形轨迹微点胶出胶注胶', standard_sec: 5.2, tolerance_sec: 0.4, golden_velocity_mms: 32, pinch_gap_mm: 22, target_roi: '密封圈环形槽', hand_action: '匀速回旋微控' },
+      { step_order: 3, name: '激光位移测厚度与UV固化', standard_sec: 3.0, tolerance_sec: 0.3, golden_velocity_mms: 15, pinch_gap_mm: 28, target_roi: '固化检查工位', hand_action: '平稳托举' },
+    ],
+    motion_signature: {
+      avg_speed_mms: 45.6,
+      max_acceleration_mms2: 110,
+      path_efficiency: 99.3,
+      tremor_jitter_px: 0.35,
+      smoothness_index: 0.97,
+      keypoint_envelope_bound: '±10px',
+    },
+  },
 ];
 
 let learningSessions: any[] = [
@@ -2270,6 +2445,38 @@ app.post('/api/video-learning/templates', (req, res) => {
   res.status(201).json(item);
 });
 
+app.post('/api/video-learning/record-upload', (req, res) => {
+  const { name, business_type, station_id, duration_seconds, recorded_blob_url, description } = req.body;
+  const newId = videoTemplates.length + 1;
+  const duration = Number(duration_seconds) || 12.8;
+  const item = {
+    id: newId,
+    name: name || `现场实录示范工序-${newId}`,
+    description: description || '操作员现场摄像头实录视频分解示范',
+    video_path: recorded_blob_url || '/uploads/sample_smt.mp4',
+    duration_seconds: duration,
+    fps: 30,
+    frame_count: Math.round(duration * 30),
+    resolution: '1280x720 (720P HD)',
+    business_type: business_type || 'assembly',
+    station_id: station_id || 'ST-ASM-01',
+    learning_config: { focus_classes: ['operator_hand', 'pcb_board', 'electric_screwdriver', 'bin_01'] },
+    sop_content: {
+      standard_steps: [
+        { step: 1, name: '放置PCB定位', standard_time_sec: 2.2, tolerance: 0.4 },
+        { step: 2, name: '料盒拾取精密器件', standard_time_sec: 4.5, tolerance: 0.7 },
+        { step: 3, name: '电批锁螺丝紧固', standard_time_sec: 3.4, tolerance: 0.5 },
+        { step: 4, name: '条码扫描过站', standard_time_sec: 1.5, tolerance: 0.3 },
+      ]
+    },
+    workflow_summary: { total_cycles: 1, mean_cycle_sec: duration, adherence_rate: 99.0 },
+    status: 'completed',
+    created_at: new Date().toISOString(),
+  };
+  videoTemplates.unshift(item);
+  res.status(201).json(item);
+});
+
 app.get('/api/video-learning/templates/:id/sessions', (req, res) => {
   const tplId = Number(req.params.id);
   const matched = learningSessions.filter((s) => s.template_id === tplId);
@@ -2492,6 +2699,188 @@ let sopMonitorEvents = [
 
 app.get('/api/sop-monitor/status', (_req, res) => {
   res.json(sopMonitorStatus);
+});
+
+app.get('/api/sop-monitor/active-specification', (_req, res) => {
+  res.json(activeSopSpecification);
+});
+
+app.post('/api/sop-monitor/publish-specification', (req, res) => {
+  const spec = req.body;
+  activeSopSpecification = {
+    ...activeSopSpecification,
+    ...spec,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Synchronize SOP monitor live status
+  sopMonitorStatus.template_name = spec.template_name || sopMonitorStatus.template_name;
+  sopMonitorStatus.station_id = spec.station_id || sopMonitorStatus.station_id;
+  sopMonitorStatus.current_step_order = 1;
+  sopMonitorStatus.current_step_name = spec.steps?.[0]?.step_name || '工序起始';
+  sopMonitorStatus.step_standard_sec = spec.steps?.[0]?.standard_sec || 2.5;
+  sopMonitorStatus.step_tolerance_sec = spec.steps?.[0]?.tolerance_sec || 0.5;
+  sopMonitorStatus.takt_time_target = spec.total_cycle_sec || 10.5;
+  sopMonitorStatus.target_roi_name = spec.steps?.[0]?.target_roi_name || '主装配工装基准区';
+  sopMonitorStatus.andon_state = 'green';
+  sopMonitorStatus.plc_interlock_active = false;
+  sopMonitorStatus.active_deviation = null;
+
+  // Push audit event
+  sopMonitorEvents.unshift({
+    id: `EVT-SPEC-${Date.now().toString().slice(-4)}`,
+    timestamp: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+    station_id: sopMonitorStatus.station_id,
+    operator_id: 'SYSTEM-IE',
+    template_name: sopMonitorStatus.template_name,
+    step_order: 1,
+    step_name: 'SOP规范在线更新激活',
+    deviation_type: 'custom',
+    severity: 'minor',
+    title: `SOP作业规范更新生效: ${spec.doc_no || 'SOP-2026'}`,
+    description: `已成功加载新规程，包含 ${spec.steps?.length || 5} 道标准动作工序，标准单件节拍设定为 ${spec.total_cycle_sec || 10.5} 秒。`,
+    actual_value: '规范已在线激活',
+    standard_value: `${spec.total_cycle_sec || 10.5}s / cycle`,
+    status: 'resolved',
+    plc_interlock_triggered: false,
+  });
+
+  res.json({
+    success: true,
+    message: '标准作业规范已成功发布并激活至车间在线合规监控！',
+    specification: activeSopSpecification,
+    status: sopMonitorStatus,
+  });
+});
+
+// -------------------------------------------------------------
+// Golden Standard Repository & Benchmark APIs
+// -------------------------------------------------------------
+app.get('/api/golden-standards', (_req, res) => {
+  res.json(goldenStandards);
+});
+
+app.post('/api/golden-standards', (req, res) => {
+  const newId = goldenStandards.length + 1;
+  const newStandard = {
+    id: newId,
+    code: req.body.code || `GS-CUSTOM-${newId.toString().padStart(3, '0')}`,
+    name: req.body.name || `实录大师级黄金标准-${newId}`,
+    description: req.body.description || '现场工艺标兵操作录制黄金标准序列',
+    master_operator: req.body.master_operator || '特级技师 (实录示范)',
+    station_id: req.body.station_id || 'ST-SMT-A03',
+    business_type: req.body.business_type || 'assembly',
+    is_active: false,
+    total_duration_sec: Number(req.body.total_duration_sec) || 10.5,
+    tolerance_sec: Number(req.body.tolerance_sec) || 0.3,
+    video_path: req.body.video_path || '/uploads/sample_smt.mp4',
+    stability_score: Number(req.body.stability_score) || 98.5,
+    created_at: new Date().toISOString(),
+    steps: req.body.steps || [
+      { step_order: 1, name: 'PCB板定位到位与气动夹紧', standard_sec: 2.5, tolerance_sec: 0.3, golden_velocity_mms: 48, pinch_gap_mm: 20, target_roi: '主装配工装基准区', hand_action: '双手平稳对位' },
+      { step_order: 2, name: '料盒精密元件拾取与插装', standard_sec: 4.8, tolerance_sec: 0.4, golden_velocity_mms: 80, pinch_gap_mm: 8.5, target_roi: '料盒1号区', hand_action: '精密双指微捏取' },
+      { step_order: 3, name: '智能电批恒扭矩紧固', standard_sec: 3.2, tolerance_sec: 0.3, golden_velocity_mms: 50, pinch_gap_mm: 18, target_roi: '螺栓锁紧工作区', hand_action: '工具握持 (Grip)' },
+    ],
+    motion_signature: req.body.motion_signature || {
+      avg_speed_mms: 58.5,
+      max_acceleration_mms2: 150,
+      path_efficiency: 98.9,
+      tremor_jitter_px: 0.4,
+      smoothness_index: 0.97,
+      keypoint_envelope_bound: '±10px',
+    },
+  };
+  goldenStandards.unshift(newStandard);
+  res.status(201).json(newStandard);
+});
+
+app.post('/api/golden-standards/:id/set-active', (req, res) => {
+  const id = Number(req.params.id);
+  const target = goldenStandards.find((g) => g.id === id);
+  if (!target) {
+    return res.status(404).json({ error: '未找到该黄金标准' });
+  }
+
+  goldenStandards.forEach((g) => {
+    g.is_active = g.id === id;
+  });
+
+  // Sync with active SOP and Monitor Status
+  activeSopSpecification.doc_no = target.code;
+  activeSopSpecification.template_name = target.name;
+  activeSopSpecification.station_id = target.station_id;
+  activeSopSpecification.total_cycle_sec = target.total_duration_sec;
+  activeSopSpecification.steps = target.steps.map((s: any) => ({
+    step_order: s.step_order,
+    step_name: s.name,
+    standard_sec: s.standard_sec,
+    tolerance_sec: s.tolerance_sec,
+    target_roi_name: s.target_roi,
+    hand_action: s.hand_action,
+    critical_check: '动作轨迹需契合黄金标准信封',
+    poka_yoke: '偏差超过公差带触发预警',
+  }));
+
+  sopMonitorStatus.template_name = target.name;
+  sopMonitorStatus.station_id = target.station_id;
+  sopMonitorStatus.takt_time_target = target.total_duration_sec;
+  sopMonitorStatus.step_standard_sec = target.steps[0]?.standard_sec || 2.5;
+  sopMonitorStatus.step_tolerance_sec = target.steps[0]?.tolerance_sec || 0.3;
+  sopMonitorStatus.current_step_name = target.steps[0]?.name || '工序起始';
+
+  res.json({
+    success: true,
+    message: `黄金标准 [${target.code}] 已正式激活为全线最高参考基准！`,
+    activeStandard: target,
+  });
+});
+
+app.post('/api/golden-standards/:id/compare', (req, res) => {
+  const id = Number(req.params.id);
+  const standard = goldenStandards.find((g) => g.id === id) || goldenStandards[0];
+  const testSteps = req.body.test_steps || standard.steps;
+
+  const stepComparisons = standard.steps.map((stdStep: any, idx: number) => {
+    const testStep = testSteps[idx] || stdStep;
+    const testDuration = testStep.duration || (stdStep.standard_sec * (1 + (Math.random() * 0.16 - 0.08)));
+    const durationDelta = +(testDuration - stdStep.standard_sec).toFixed(2);
+    const isWithinTolerance = Math.abs(durationDelta) <= stdStep.tolerance_sec;
+    const trajectorySimilarity = Math.max(88, Math.min(99.5, Math.round(98 - Math.abs(durationDelta) * 5)));
+
+    return {
+      step_order: stdStep.step_order,
+      step_name: stdStep.name,
+      golden_duration_sec: stdStep.standard_sec,
+      golden_tolerance_sec: stdStep.tolerance_sec,
+      actual_duration_sec: +testDuration.toFixed(2),
+      duration_delta_sec: durationDelta,
+      status: isWithinTolerance ? 'pass' : durationDelta > 0 ? 'timeout_warning' : 'ahead',
+      trajectory_similarity_pct: trajectorySimilarity,
+      pinch_gap_delta_mm: +(Math.random() * 1.5 - 0.5).toFixed(1),
+      velocity_delta_pct: +(Math.random() * 8 - 4).toFixed(1),
+      judgment: isWithinTolerance ? '合规 (Match Golden Benchmark)' : durationDelta > 0 ? '滞后超时' : '工步偏快',
+    };
+  });
+
+  const totalDelta = +(stepComparisons.reduce((acc: number, s: any) => acc + s.duration_delta_sec, 0)).toFixed(2);
+  const overallSimilarity = +(stepComparisons.reduce((acc: number, s: any) => acc + s.trajectory_similarity_pct, 0) / stepComparisons.length).toFixed(1);
+  const isOverallPass = stepComparisons.every((s: any) => s.status !== 'fail');
+
+  res.json({
+    golden_standard_code: standard.code,
+    golden_standard_name: standard.name,
+    master_operator: standard.master_operator,
+    overall_similarity_pct: overallSimilarity,
+    total_duration_delta_sec: totalDelta,
+    is_overall_pass: isOverallPass,
+    dtw_distance: +(Math.random() * 0.15 + 0.05).toFixed(3),
+    step_comparisons: stepComparisons,
+    recommendations: [
+      '整体动作轨迹平滑度与大师示范契合度达到 98.2%，动作习惯优秀；',
+      '第2工步捏取电容引脚插入动作微有 0.3s 停顿，建议维持手腕水平姿态；',
+      '整体单件节拍在黄金基准允许公差带（±0.3s）范围内，准予上线量产。',
+    ],
+  });
 });
 
 app.get('/api/sop-monitor/events', (_req, res) => {

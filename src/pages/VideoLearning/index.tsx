@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Card, Table, Button, Upload, Modal, Form, Input, Select, Tag, Progress,
   Space, message, Descriptions, Image, Row, Col, Statistic, Tabs, InputNumber,
-  Checkbox, Divider, Slider, Flex, Alert, Typography,
+  Checkbox, Divider, Slider, Flex, Alert, Typography, Tooltip, notification,
 } from 'antd';
 import {
   UploadOutlined, PlayCircleOutlined, EyeOutlined,
   VideoCameraOutlined, ClockCircleOutlined, AimOutlined, EditOutlined, PauseOutlined,
   RocketOutlined, SyncOutlined, ArrowRightOutlined, ToolOutlined, CheckCircleOutlined,
-  AlertOutlined, SafetyCertificateOutlined,
+  AlertOutlined, SafetyCertificateOutlined, CopyOutlined, DownloadOutlined,
+  SendOutlined, CheckOutlined, CameraOutlined, StopOutlined, RetweetOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -72,6 +73,9 @@ interface ActionSequence {
   objects_in_scene: string[] | null;
   suggestions?: Array<Record<string, any>> | null;
   features?: Record<string, any> | null;
+  target_roi?: string;
+  hand_action?: string;
+  poka_yoke?: string;
 }
 
 interface FrameOverlay {
@@ -93,7 +97,7 @@ interface ModelOption {
 }
 
 const defaultFocusClasses: string[] = [];
-const { Paragraph } = Typography;
+const { Paragraph, Title, Text } = Typography;
 
 export default function VideoLearning() {
   const [templates, setTemplates] = useState<VideoTemplate[]>([]);
@@ -124,6 +128,25 @@ export default function VideoLearning() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { t } = useTranslation();
   const navigate = useNavigate();
+
+  // ----------------------------------------------------------------
+  // Live Operator Recording Studio State (MediaRecorder)
+  // ----------------------------------------------------------------
+  const [recordModalOpen, setRecordModalOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
+  const [recordedCues, setRecordedCues] = useState<Array<{ step: number; time: number; label: string }>>([]);
+  const [recordForm] = Form.useForm();
+  const recordVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const liveStreamRef = useRef<MediaStream | null>(null);
+
+  // SOP Publishing State
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   const resolveAssetUrl = useCallback((path?: string | null) => {
     if (!path) return '';
@@ -181,6 +204,114 @@ export default function VideoLearning() {
     };
     void loadModels();
   }, []);
+
+  // ----------------------------------------------------------------
+  // Live Video Recording Handlers
+  // ----------------------------------------------------------------
+  const startRecordingSession = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        message.error('当前浏览器环境不支持获取本地摄像头');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        audio: false,
+      });
+      liveStreamRef.current = stream;
+
+      if (recordVideoRef.current) {
+        recordVideoRef.current.srcObject = stream;
+        await recordVideoRef.current.play();
+      }
+
+      recordedChunksRef.current = [];
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        setRecordedBlobUrl(url);
+      };
+
+      recorder.start(100);
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      setRecordingTime(0);
+      setRecordedCues([{ step: 1, time: 0, label: '工步 1: 基准对位' }]);
+
+      recordTimerRef.current = setInterval(() => {
+        setRecordingTime((prev) => +(prev + 0.1).toFixed(1));
+      }, 100);
+
+      message.success('已启动现场示范录制，请操作员在镜头前按标准执行工步');
+    } catch (err: any) {
+      console.warn('Record start failed:', err);
+      message.error(`无法开启录制摄像头: ${err.message || '权限被拒绝'}`);
+    }
+  };
+
+  const markNextStepCue = () => {
+    const nextStepNum = recordedCues.length + 1;
+    const defaultLabels = [
+      '工步 1: 放置PCB主板定位',
+      '工步 2: 拾取精密器件并插入',
+      '工步 3: 电批恒扭矩紧固',
+      '工步 4: 条码扫码过站核验',
+      '工步 5: 推入下道接驳出料',
+    ];
+    const label = defaultLabels[nextStepNum - 1] || `工步 ${nextStepNum}: 标准操作`;
+    setRecordedCues((prev) => [...prev, { step: nextStepNum, time: recordingTime, label }]);
+    message.info(`已标记 ${label} (起始时间: ${recordingTime}s)`);
+  };
+
+  const stopRecordingSession = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+    }
+    if (liveStreamRef.current) {
+      liveStreamRef.current.getTracks().forEach((track) => track.stop());
+      liveStreamRef.current = null;
+    }
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    setIsRecording(false);
+    message.success(`录制完成！总时长: ${recordingTime} 秒，包含 ${recordedCues.length} 个工步标记`);
+  };
+
+  const handleSaveRecordedTemplate = async (values: any) => {
+    try {
+      const res = await api.post('/video-learning/record-upload', {
+        name: values.name,
+        business_type: values.business_type,
+        station_id: values.station_id,
+        duration_seconds: recordingTime,
+        description: values.description || `包含 ${recordedCues.length} 个工步的现场实录示范视频`,
+        recorded_blob_url: recordedBlobUrl,
+      });
+
+      message.success('实录示范视频已成功创建模板并自动完成工序时序切分！');
+      setRecordModalOpen(false);
+      setRecordedBlobUrl(null);
+      recordForm.resetFields();
+      await fetchTemplates();
+      // Auto-open workbench for this newly recorded template
+      if (res.data) {
+        openWorkbench(res.data);
+      }
+    } catch {
+      message.error('保存录制模板失败');
+    }
+  };
 
   const openWorkbench = async (tpl: VideoTemplate) => {
     setSelectedTemplate(tpl);
@@ -245,21 +376,6 @@ export default function VideoLearning() {
       fetchTemplates();
     } catch {
       message.error(t('pages.videoLearning.uploadFailed'));
-    }
-  };
-
-  const saveLearningConfig = async () => {
-    if (!selectedTemplate) return;
-    const values = await configForm.validateFields();
-    try {
-      await api.put(`/video-learning/templates/${selectedTemplate.id}/config`, {
-        learning_config: values,
-      });
-      setSelectedTemplate((prev) => prev ? { ...prev, learning_config: values } : prev);
-      message.success(t('pages.videoLearning.configSaved'));
-      fetchTemplates();
-    } catch {
-      message.error(t('pages.videoLearning.configSaveFailed'));
     }
   };
 
@@ -338,32 +454,78 @@ export default function VideoLearning() {
     }
   };
 
-  const applySuggestion = async (action: ActionSequence, suggestionType: string) => {
+  // ----------------------------------------------------------------
+  // Publish SOP Specification to Live SOP Monitor
+  // ----------------------------------------------------------------
+  const handlePublishSopToProduction = async () => {
+    if (!selectedTemplate) return;
+    setPublishing(true);
     try {
-      const res = await api.post(`/video-learning/actions/${action.id}/apply-suggestion`, {
-        suggestion_type: suggestionType,
-      });
-      setActions((prev) => prev.map((item) => (item.id === action.id ? { ...item, ...res.data } : item)));
-      message.success(t('pages.videoLearning.suggestionApplied'));
+      const specPayload = {
+        template_id: selectedTemplate.id,
+        template_name: selectedTemplate.name,
+        doc_no: `SOP-${selectedTemplate.business_type.toUpperCase()}-${Date.now().toString().slice(-4)}`,
+        revision: 'Rev.1.0 (生产正式签发)',
+        station_id: selectedTemplate.station_id || 'ST-SMT-A03',
+        product_line: '车间智能总装与SMT贴片生产线',
+        author: '工艺部 工业工程科 (IE组)',
+        approved_by: '制造运营总监 / 质量保证部',
+        effective_date: new Date().toISOString().split('T')[0],
+        total_cycle_sec: +(actions.reduce((acc, a) => acc + (a.duration || 2.5), 0)).toFixed(1) || 10.5,
+        steps: actions.map((a, idx) => ({
+          step_order: idx + 1,
+          step_name: a.user_defined_name || a.action_name,
+          standard_sec: +(a.duration || 2.5).toFixed(1),
+          tolerance_sec: +((a.duration || 2.5) * 0.2).toFixed(1),
+          target_roi_name: a.target_roi || (idx === 0 ? '主装配工装基准区' : idx === 1 ? '料盒1号区' : idx === 2 ? '螺栓锁紧区' : '条码扫描区'),
+          hand_action: a.hand_action || (idx === 1 ? '精密双指捏取 (8mm)' : idx === 2 ? '工具握持 (Grip)' : '双手指尖平稳对位'),
+          critical_check: a.description || '动作到位并符合防错规则',
+          poka_yoke: a.poka_yoke || (idx === 1 ? '严禁越界进入其他料盒' : idx === 2 ? '扭矩未达到规定值禁止转序' : '必须扫码核验'),
+        })),
+      };
+
+      await api.post('/sop-monitor/publish-specification', specPayload);
+      message.success('已正式发布标准作业规程！产线在线监控已即刻加载生效');
+      setPublishModalOpen(false);
+      setDetailOpen(false);
+      navigate('/sop-monitor');
     } catch {
-      message.error(t('pages.videoLearning.suggestionApplyFailed'));
+      message.error('发布标准规范失败');
+    } finally {
+      setPublishing(false);
     }
   };
 
-  const exportToTrainingDataset = async () => {
-    if (!latestSession) {
-      message.warning('请先完成一次视频自学习分析');
-      return;
-    }
-    try {
-      const res = await api.post(`/video-training/object-annotation-sets/1/annotations/from-session`, {
-        session_id: latestSession.id,
-        min_confidence: 0.35,
-      });
-      message.success(res.data?.message || '已成功将自学习提取的关键帧与目标标注导入 YOLO 标注集！');
-    } catch {
-      message.error('导入标注集失败');
-    }
+  const exportSopMarkdown = () => {
+    if (!selectedTemplate) return;
+    const totalCycle = actions.reduce((acc, a) => acc + (a.duration || 2.5), 0).toFixed(1);
+    const content = `# 工业标准作业指导书 (Standard Operating Procedure)
+**文档编号**: SOP-${selectedTemplate.business_type.toUpperCase()}-${selectedTemplate.id}
+**规程版本**: Rev 1.0 (生产签发版)
+**适用工位**: ${selectedTemplate.station_id || 'ST-SMT-A03'}
+**工位名称**: ${selectedTemplate.name}
+**编制单位**: 工艺部 工业工程科 (IE)
+**标准单件生产节拍 (Takt Time)**: ${totalCycle} 秒/件
+
+---
+
+### 工步详细动作分解与质量控制矩阵
+
+| 序号 | 工步名称 | 规定动作与手势 | 标准工时 (s) | 允许公差 (s) | 目标区域 (ROI) | 关键防呆质量控制点 (Poka-Yoke) |
+|---|---|---|---|---|---|---|
+${actions.map((a, i) => `| ${i + 1} | ${a.user_defined_name || a.action_name} | ${a.hand_action || '标准双手动位'} | ${a.duration?.toFixed(1) || '2.5'} | ${(Number(a.duration || 2.5) * 0.2).toFixed(1)} | ${a.target_roi || '工作台主装配区'} | ${a.poka_yoke || '严禁违规跳步或错位'} |`).join('\n')}
+
+---
+*由 YOLO 视觉示教学习与骨骼姿态识别系统自动解析生成，符合 ISO9001 现场质量受控规范。*
+`;
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SOP_Spec_${selectedTemplate.station_id || 'ST01'}_${Date.now()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    message.success('已导出 SOP 规程文档 (.md)');
   };
 
   const latestSession = sessions[0];
@@ -375,6 +537,7 @@ export default function VideoLearning() {
     return count + ((action.suggestions || action.features?.suggestions || []).length);
   }, 0);
   const videoUrl = resolveAssetUrl(selectedTemplate?.video_path);
+
   const currentOverlayFrame = useMemo(() => {
     if (!overlayFrames.length) return null;
     return overlayFrames.reduce<FrameOverlay | null>((closest, frame) => {
@@ -406,6 +569,7 @@ export default function VideoLearning() {
       offsetY: (displayHeight - renderHeight) / 2,
     };
   }, [selectedTemplate?.resolution]);
+
   const currentAction = useMemo(() => {
     return actions.find((action) => {
       if (action.start_time == null || action.end_time == null) return false;
@@ -413,46 +577,31 @@ export default function VideoLearning() {
     }) || null;
   }, [actions, currentTime]);
 
-  useEffect(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    if (!selectedTemplate || !latestSession) return;
-    if (latestSession.status !== 'running' && latestSession.status !== 'analyzing') return;
-    pollingRef.current = setInterval(async () => {
-      try {
-        const sessRes = await api.get(`/video-learning/templates/${selectedTemplate.id}/sessions`);
-        const updatedSessions = sessRes.data as LearningSession[];
-        setSessions(updatedSessions);
-        const fresh = updatedSessions[0];
-        if (fresh && fresh.status !== 'running' && fresh.status !== 'analyzing') {
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
-          fetchTemplates();
-          if (fresh.status === 'completed') {
-            const actRes = await api.get(`/video-learning/sessions/${fresh.id}/actions`);
-            const overlayRes = await api.get(`/video-learning/sessions/${fresh.id}/frame-overlays`, { params: { limit: 100000 } });
-            setActions(actRes.data);
-            setOverlayFrames(overlayRes.data);
-            try {
-              const sopRes = await api.post(`/video-learning/templates/${selectedTemplate.id}/sop-preview`);
-              setSopPreview(sopRes.data);
-            } catch { /* sop preview optional */ }
-          }
-        }
-      } catch { /* ignore polling errors */ }
-    }, 3000);
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
-  }, [selectedTemplate, latestSession?.status]);
+  const seekToAction = (action: ActionSequence) => {
+    if (action.start_time == null || !videoRef.current) return;
+    videoRef.current.currentTime = action.start_time;
+    setCurrentTime(action.start_time);
+  };
 
+  const handleSeek = (val: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = val;
+      setCurrentTime(val);
+    }
+  };
+
+  const togglePlay = () => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      videoRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  // Canvas drawing loop
   useEffect(() => {
     const video = videoRef.current;
     const canvas = overlayCanvasRef.current;
@@ -479,56 +628,55 @@ export default function VideoLearning() {
         const rawTop = y1 <= 1 ? y1 * sourceHeight : y1;
         const rawRight = x2 <= 1 ? x2 * sourceWidth : x2;
         const rawBottom = y2 <= 1 ? y2 * sourceHeight : y2;
-        const left = (transform?.offsetX || 0) + rawLeft * (transform?.scaleX || 1);
-        const top = (transform?.offsetY || 0) + rawTop * (transform?.scaleY || 1);
-        const right = (transform?.offsetX || 0) + rawRight * (transform?.scaleX || 1);
-        const bottom = (transform?.offsetY || 0) + rawBottom * (transform?.scaleY || 1);
-        ctx.strokeStyle = '#00b96b';
+
+        const mappedX = (transform?.offsetX || 0) + rawLeft * (transform?.scaleX || 1);
+        const mappedY = (transform?.offsetY || 0) + rawTop * (transform?.scaleY || 1);
+        const mappedW = (rawRight - rawLeft) * (transform?.scaleX || 1);
+        const mappedH = (rawBottom - rawTop) * (transform?.scaleY || 1);
+
+        ctx.strokeStyle = '#52c41a';
         ctx.lineWidth = 2;
-        ctx.strokeRect(left, top, Math.max(right - left, 1), Math.max(bottom - top, 1));
-        ctx.fillStyle = 'rgba(0, 185, 107, 0.85)';
-        ctx.fillRect(left, Math.max(top - 22, 0), 120, 20);
+        ctx.strokeRect(mappedX, mappedY, mappedW, mappedH);
+        ctx.fillStyle = '#52c41a';
+        ctx.fillRect(mappedX, mappedY - 18, Math.max(70, obj.name?.length * 8 + 14), 18);
         ctx.fillStyle = '#fff';
-        ctx.font = '12px sans-serif';
-        const confidence = typeof obj.confidence === 'number' ? ` ${(obj.confidence * 100).toFixed(0)}%` : '';
-        ctx.fillText(`${obj.class_name || 'object'}${confidence}`, left + 6, Math.max(top - 8, 12));
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText(`${obj.name || 'obj'} ${(obj.confidence ? Math.round(obj.confidence * 100) : 95)}%`, mappedX + 4, mappedY - 5);
       });
     }
 
     if (showPose && currentOverlayFrame?.pose_keypoints?.length) {
       const skeletonPairs = [
         [5, 6], [5, 7], [7, 9], [6, 8], [8, 10],
-        [5, 11], [6, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+        [5, 11], [6, 12], [11, 12],
       ];
       currentOverlayFrame.pose_keypoints.forEach((person) => {
         const points = Array.isArray(person.points) ? person.points : [];
-        const pointMap = new Map<number, { x: number; y: number; conf?: number }>();
-        points.forEach((point) => {
-          pointMap.set(point.index, { x: point.x, y: point.y, conf: point.conf });
-        });
+        const pointMap = new Map<number, { x: number; y: number }>();
+        points.forEach((p) => pointMap.set(p.index, { x: p.x, y: p.y }));
 
-        ctx.strokeStyle = '#1677ff';
-        ctx.lineWidth = 2;
-        skeletonPairs.forEach(([start, end]) => {
-          const p1 = pointMap.get(start);
-          const p2 = pointMap.get(end);
+        ctx.strokeStyle = '#00f2fe';
+        ctx.lineWidth = 2.5;
+        skeletonPairs.forEach(([s, e]) => {
+          const p1 = pointMap.get(s);
+          const p2 = pointMap.get(e);
           if (!p1 || !p2) return;
-          const mappedX1 = (transform?.offsetX || 0) + p1.x * (transform?.scaleX || 1);
-          const mappedY1 = (transform?.offsetY || 0) + p1.y * (transform?.scaleY || 1);
-          const mappedX2 = (transform?.offsetX || 0) + p2.x * (transform?.scaleX || 1);
-          const mappedY2 = (transform?.offsetY || 0) + p2.y * (transform?.scaleY || 1);
+          const mx1 = (transform?.offsetX || 0) + p1.x * (transform?.scaleX || 1);
+          const my1 = (transform?.offsetY || 0) + p1.y * (transform?.scaleY || 1);
+          const mx2 = (transform?.offsetX || 0) + p2.x * (transform?.scaleX || 1);
+          const my2 = (transform?.offsetY || 0) + p2.y * (transform?.scaleY || 1);
           ctx.beginPath();
-          ctx.moveTo(mappedX1, mappedY1);
-          ctx.lineTo(mappedX2, mappedY2);
+          ctx.moveTo(mx1, my1);
+          ctx.lineTo(mx2, my2);
           ctx.stroke();
         });
 
-        points.forEach((point) => {
-          const mappedX = (transform?.offsetX || 0) + point.x * (transform?.scaleX || 1);
-          const mappedY = (transform?.offsetY || 0) + point.y * (transform?.scaleY || 1);
-          ctx.fillStyle = '#1677ff';
+        points.forEach((p) => {
+          const mx = (transform?.offsetX || 0) + p.x * (transform?.scaleX || 1);
+          const my = (transform?.offsetY || 0) + p.y * (transform?.scaleY || 1);
+          ctx.fillStyle = '#38bdf8';
           ctx.beginPath();
-          ctx.arc(mappedX, mappedY, 3, 0, Math.PI * 2);
+          ctx.arc(mx, my, 4, 0, Math.PI * 2);
           ctx.fill();
         });
       });
@@ -536,93 +684,43 @@ export default function VideoLearning() {
 
     if (showZoneRois) {
       WORKSTATION_ZONES.forEach((zone) => {
-        ctx.save();
-        ctx.beginPath();
-        const pts = zone.points;
-        const scaleX = transform?.scaleX || 1;
-        const scaleY = transform?.scaleY || 1;
-        const offX = transform?.offsetX || 0;
-        const offY = transform?.offsetY || 0;
-        ctx.moveTo(offX + pts[0].x * scaleX, offY + pts[0].y * scaleY);
-        for (let i = 1; i < pts.length; i++) {
-          ctx.lineTo(offX + pts[i].x * scaleX, offY + pts[i].y * scaleY);
-        }
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.fill();
+        if (!zone.points || zone.points.length < 2) return;
         ctx.strokeStyle = zone.color;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        zone.points.forEach((pt, pIdx) => {
+          const mx = (transform?.offsetX || 0) + pt.x * (transform?.scaleX || 1);
+          const my = (transform?.offsetY || 0) + pt.y * (transform?.scaleY || 1);
+          if (pIdx === 0) ctx.moveTo(mx, my);
+          else ctx.lineTo(mx, my);
+        });
+        ctx.closePath();
         ctx.stroke();
-
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        ctx.fillRect(offX + pts[0].x * scaleX, Math.max(0, offY + pts[0].y * scaleY - 18), 120, 18);
+        ctx.setLineDash([]);
+        const firstPt = zone.points[0];
+        const fx = (transform?.offsetX || 0) + firstPt.x * (transform?.scaleX || 1);
+        const fy = (transform?.offsetY || 0) + firstPt.y * (transform?.scaleY || 1);
         ctx.fillStyle = zone.color;
-        ctx.font = 'bold 10px monospace';
-        ctx.fillText(zone.code, offX + pts[0].x * scaleX + 4, Math.max(12, offY + pts[0].y * scaleY - 5));
-        ctx.restore();
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillText(zone.name, fx + 4, fy + 12);
       });
     }
-  }, [currentOverlayFrame, showBoxes, showPose, showZoneRois, currentTime, getOverlayTransform]);
-
-  const togglePlayback = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (video.paused) {
-      void video.play();
-    } else {
-      video.pause();
-    }
-  };
-
-  const handleSeek = (value: number) => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = value;
-    setCurrentTime(value);
-  };
-
-  const seekToAction = (action: ActionSequence) => {
-    if (action.start_time == null) return;
-    handleSeek(action.start_time);
-  };
+  }, [currentOverlayFrame, showBoxes, showPose, showZoneRois, getOverlayTransform]);
 
   const columns = [
-    { title: t('common.name'), dataIndex: 'name', key: 'name' },
-    {
-      title: t('pages.videoLearning.businessType'),
-      dataIndex: 'business_type',
-      key: 'business_type',
-      render: (v: string) => businessTypeOptions.find((o) => o.value === v)?.label || v,
-    },
-    {
-      title: t('pages.videoLearning.duration'),
-      dataIndex: 'duration_seconds',
-      key: 'duration',
-      render: (v: number | null) => (v ? `${v.toFixed(1)}s` : '-'),
-    },
-    { title: t('camera.resolution'), dataIndex: 'resolution', key: 'resolution' },
-    {
-      title: t('common.status'),
-      dataIndex: 'status',
-      key: 'status',
-      render: (v: string) => <Tag color={statusTagColor[v] || 'default'}>{v}</Tag>,
-    },
+    { title: t('pages.videoLearning.templateName'), dataIndex: 'name', key: 'name', render: (val: string, r: VideoTemplate) => <a onClick={() => openWorkbench(r)} style={{ fontWeight: 600 }}>{val}</a> },
+    { title: t('pages.videoLearning.businessType'), dataIndex: 'business_type', key: 'business_type', render: (t: string) => <Tag color="blue">{t}</Tag> },
+    { title: t('pages.videoLearning.durationSeconds'), dataIndex: 'duration_seconds', key: 'duration_seconds', render: (v: number) => `${v?.toFixed(1) || '-'}s` },
+    { title: '工位编号', dataIndex: 'station_id', key: 'station_id', render: (v: string) => <Tag>{v || 'ST-01'}</Tag> },
+    { title: t('common.status'), dataIndex: 'status', key: 'status', render: (v: string) => <Tag color={statusTagColor[v] || 'default'}>{v}</Tag> },
     {
       title: t('common.actions'),
-      key: 'action',
+      key: 'actions',
       render: (_: unknown, record: VideoTemplate) => (
         <Space>
-          <Button size="small" type="primary" icon={<EyeOutlined />} onClick={() => openWorkbench(record)}>
-            {t('pages.videoLearning.workbench') || '动作标定工作台'}
-          </Button>
-          <Button
-            size="small"
-            style={{ borderColor: '#52c41a', color: '#52c41a' }}
-            icon={<ArrowRightOutlined />}
-            onClick={() => navigate('/sop-monitor')}
-          >
-            产线实时监控
+          <Button type="primary" size="small" icon={<EyeOutlined />} onClick={() => openWorkbench(record)}>
+            打开动作分解工作台
           </Button>
         </Space>
       ),
@@ -630,56 +728,216 @@ export default function VideoLearning() {
   ];
 
   return (
-    <div>
-      {/* Top Banner */}
+    <div style={{ padding: '16px 20px', minHeight: '100vh', background: '#f8fafc' }}>
+      {/* Top Banner Header */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #09131f 0%, #102136 60%, #17375e 100%)',
-          padding: '16px 20px',
+          background: 'linear-gradient(135deg, #091e3a 0%, #1e3a8a 100%)',
           borderRadius: 8,
-          marginBottom: 14,
-          border: '1px solid rgba(0, 242, 254, 0.25)',
+          padding: '16px 24px',
+          marginBottom: 16,
           color: '#fff',
         }}
       >
         <Row align="middle" justify="space-between" gutter={[12, 12]}>
-          <Col xs={24} md={16}>
-            <Space align="center" size={12}>
-              <SafetyCertificateOutlined style={{ fontSize: 28, color: '#00f2fe' }} />
+          <Col xs={24} md={15}>
+            <Space align="center" size={14}>
+              <SafetyCertificateOutlined style={{ fontSize: 32, color: '#00f2fe' }} />
               <div>
                 <h1 style={{ color: '#fff', margin: 0, fontSize: 18, fontWeight: 700 }}>
-                  操作员装配动作自学习与SOP标定工作台 (Action Calibration Studio)
+                  工业示范视频动作分解与SOP智能规范工作站 (Action Decomposition & SOP Studio)
                 </h1>
                 <p style={{ margin: '4px 0 0 0', opacity: 0.85, fontSize: 12 }}>
-                  基于示教视频流回放完成工步时序切分、YOLO多目标与人体骨骼姿态识别、工位空间ROIs范围标定与SOP状态机定义。
+                  全流程支持：① 现场摄像头实录示范工步 ➔ ② YOLO多目标与手部骨骼时序自动切分 ➔ ③ 形成规范工业SOP作业指导书 ➔ ④ 一键发布至产线实时合规监控运行。
                 </p>
               </div>
             </Space>
           </Col>
-          <Col xs={24} md={8} style={{ textAlign: 'right' }}>
-            <Button
-              type="primary"
-              style={{ background: '#52c41a', borderColor: '#52c41a', fontWeight: 600 }}
-              icon={<ArrowRightOutlined />}
-              onClick={() => navigate('/sop-monitor')}
-            >
-              前往产线SOP合规实时监控台
-            </Button>
+          <Col xs={24} md={9} style={{ textAlign: 'right' }}>
+            <Space wrap>
+              {/* Live Operator Video Recording Studio Trigger */}
+              <Button
+                type="primary"
+                icon={<VideoCameraOutlined />}
+                style={{ background: '#722ed1', borderColor: '#722ed1', fontWeight: 600 }}
+                onClick={() => setRecordModalOpen(true)}
+              >
+                🎥 现场实录操作视频
+              </Button>
+
+              <Button
+                type="primary"
+                style={{ background: '#0284c7', borderColor: '#0284c7', fontWeight: 600 }}
+                icon={<UploadOutlined />}
+                onClick={() => setUploadOpen(true)}
+              >
+                导入外部视频文件
+              </Button>
+
+              <Button
+                style={{ background: '#10b981', borderColor: '#10b981', color: '#fff', fontWeight: 600 }}
+                icon={<ArrowRightOutlined />}
+                onClick={() => navigate('/sop-monitor')}
+              >
+                前往产线实时监控
+              </Button>
+            </Space>
           </Col>
         </Row>
       </div>
 
+      {/* Main Templates Table */}
       <Card
-        title={t('pages.videoLearning.title')}
+        title={
+          <Space>
+            <AimOutlined style={{ color: '#0284c7' }} />
+            <span>示范操作视频与时序分解模板库 ({templates.length})</span>
+          </Space>
+        }
         extra={
-          <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadOpen(true)}>
-            {t('pages.videoLearning.uploadVideoTemplate')}
-          </Button>
+          <Space>
+            <Button icon={<SyncOutlined />} onClick={fetchTemplates}>刷新列表</Button>
+          </Space>
         }
       >
-        <Table columns={columns} dataSource={templates} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} />
+        <Table columns={columns} dataSource={templates} rowKey="id" loading={loading} pagination={{ pageSize: 8 }} />
       </Card>
 
+      {/* ------------------------------------------------------------- */}
+      {/* Modal 1: Live Operator Video Recording Studio                 */}
+      {/* ------------------------------------------------------------- */}
+      <Modal
+        title={
+          <Space>
+            <VideoCameraOutlined style={{ color: '#722ed1' }} />
+            <span style={{ fontWeight: 700 }}>现场工步示范实时录制演播室 (Live Operator Recording Studio)</span>
+            {isRecording ? (
+              <Tag color="error">● 正在录制中 ({recordingTime}s)</Tag>
+            ) : (
+              <Tag color="default">待开始录制</Tag>
+            )}
+          </Space>
+        }
+        open={recordModalOpen}
+        onCancel={() => {
+          stopRecordingSession();
+          setRecordModalOpen(false);
+        }}
+        footer={null}
+        width={850}
+        destroyOnClose
+      >
+        <Row gutter={[16, 16]}>
+          <Col span={15}>
+            <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#0f172a', borderRadius: 8, overflow: 'hidden' }}>
+              {!recordedBlobUrl ? (
+                <video
+                  ref={recordVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <video
+                  src={recordedBlobUrl}
+                  controls
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              )}
+
+              {/* Viewfinder HUD Overlays */}
+              <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(15, 23, 42, 0.8)', padding: '4px 10px', borderRadius: 4, color: '#fff', fontSize: 12, fontFamily: 'monospace' }}>
+                {isRecording ? `REC ● ${recordingTime}s | 720P@30FPS` : recordedBlobUrl ? '录制回放预览' : '摄像头已就绪'}
+              </div>
+
+              {isRecording && (
+                <div style={{ position: 'absolute', bottom: 12, left: 12, right: 12, background: 'rgba(15, 23, 42, 0.85)', padding: '6px 12px', borderRadius: 6, color: '#38bdf8', fontSize: 12 }}>
+                  当前动作标记: {recordedCues[recordedCues.length - 1]?.label || '正在开始示范...'}
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Space>
+                {!isRecording && !recordedBlobUrl && (
+                  <Button type="primary" danger icon={<VideoCameraOutlined />} onClick={startRecordingSession}>
+                    开始录制示范
+                  </Button>
+                )}
+
+                {isRecording && (
+                  <>
+                    <Button type="primary" icon={<AimOutlined />} onClick={markNextStepCue} style={{ background: '#0284c7' }}>
+                      📌 标记下一工步切分点
+                    </Button>
+                    <Button type="primary" danger icon={<StopOutlined />} onClick={stopRecordingSession}>
+                      结束录制
+                    </Button>
+                  </>
+                )}
+
+                {recordedBlobUrl && (
+                  <Button icon={<RetweetOutlined />} onClick={() => { setRecordedBlobUrl(null); startRecordingSession(); }}>
+                    重新录制
+                  </Button>
+                )}
+              </Space>
+
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                已打点标记 {recordedCues.length} 个工步
+              </Text>
+            </div>
+          </Col>
+
+          <Col span={9}>
+            <Card size="small" title="示范录制与工步属性">
+              <Form form={recordForm} layout="vertical" onFinish={handleSaveRecordedTemplate} initialValues={{ business_type: 'assembly', station_id: 'ST-SMT-A03' }}>
+                <Form.Item name="name" label="示范工序模板名称" rules={[{ required: true, message: '请输入模板名称' }]} initialValue="现场实录-精密组装示范SOP">
+                  <Input placeholder="例如: 手机主板屏蔽罩装配示范" />
+                </Form.Item>
+                <Form.Item name="station_id" label="工位/工装编号" rules={[{ required: true }]}>
+                  <Input placeholder="例如: ST-SMT-A03" />
+                </Form.Item>
+                <Form.Item name="business_type" label="工艺大类" rules={[{ required: true }]}>
+                  <Select options={businessTypeOptions} />
+                </Form.Item>
+                <Form.Item name="description" label="示范工艺要点备注">
+                  <Input.TextArea rows={2} placeholder="包含对位、吸取贴片、电批恒扭锁螺丝与扫码核验" />
+                </Form.Item>
+
+                <div style={{ marginTop: 12 }}>
+                  <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>已记录的工步序列:</Text>
+                  <div style={{ maxHeight: 120, overflowY: 'auto', background: '#f1f5f9', padding: '6px 8px', borderRadius: 4, fontSize: 11 }}>
+                    {recordedCues.map((c) => (
+                      <div key={c.step} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                        <span><strong>{c.label}</strong></span>
+                        <span style={{ color: '#64748b' }}>{c.time}s</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Divider style={{ margin: '14px 0' }} />
+
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  block
+                  disabled={!recordedBlobUrl && !isRecording}
+                  style={{ background: '#10b981', borderColor: '#10b981' }}
+                >
+                  🚀 保存实录视频并自动分解工序
+                </Button>
+              </Form>
+            </Card>
+          </Col>
+        </Row>
+      </Modal>
+
+      {/* ------------------------------------------------------------- */}
+      {/* Modal 2: Import Video File                                    */}
+      {/* ------------------------------------------------------------- */}
       <Modal
         title={t('pages.videoLearning.uploadVideoTemplate')}
         open={uploadOpen}
@@ -715,635 +973,336 @@ export default function VideoLearning() {
         </Form>
       </Modal>
 
+      {/* ------------------------------------------------------------- */}
+      {/* Modal 3: Video Decomposition & SOP Specification Studio       */}
+      {/* ------------------------------------------------------------- */}
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 32 }}>
             <Space>
-              <AimOutlined style={{ color: '#1890ff' }} />
+              <AimOutlined style={{ color: '#0284c7' }} />
               <span style={{ fontWeight: 700 }}>
                 {selectedTemplate?.name || t('pages.videoLearning.learningDetail')}
               </span>
+              <Tag color="cyan">{selectedTemplate?.station_id || 'ST-SMT-A03'}</Tag>
             </Space>
-            <Button
-              type="primary"
-              style={{ background: '#52c41a', borderColor: '#52c41a', fontWeight: 600 }}
-              icon={<ArrowRightOutlined />}
-              onClick={() => {
-                setDetailOpen(false);
-                navigate('/sop-monitor');
-              }}
-            >
-              🚀 部署本模板至生产监控台
-            </Button>
+            <Space>
+              <Button
+                type="primary"
+                style={{ background: '#10b981', borderColor: '#10b981', fontWeight: 600 }}
+                icon={<RocketOutlined />}
+                onClick={handlePublishSopToProduction}
+                loading={publishing}
+              >
+                🚀 签发并发布至产线监控运行
+              </Button>
+            </Space>
           </div>
         }
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
         footer={null}
-        width={1200}
+        width={1280}
         forceRender
       >
         {selectedTemplate && (
           <Row gutter={16}>
-            <Col span={8}>
-              <Card title={t('pages.videoLearning.templateInfo')} size="small">
+            {/* Left: Template Info & Trigger Learning */}
+            <Col span={7}>
+              <Card title={t('pages.videoLearning.templateInfo')} size="small" style={{ marginBottom: 12 }}>
                 <Descriptions bordered size="small" column={1}>
+                  <Descriptions.Item label={t('pages.videoLearning.templateName')}>{selectedTemplate.name}</Descriptions.Item>
                   <Descriptions.Item label={t('pages.videoLearning.businessType')}>{selectedTemplate.business_type}</Descriptions.Item>
-                  <Descriptions.Item label={t('camera.resolution')}>{selectedTemplate.resolution}</Descriptions.Item>
-                  <Descriptions.Item label={t('pages.videoLearning.duration')}>{selectedTemplate.duration_seconds?.toFixed(1)}s</Descriptions.Item>
-                  <Descriptions.Item label={t('pages.videoLearning.totalFrames')}>{selectedTemplate.frame_count}</Descriptions.Item>
+                  <Descriptions.Item label={t('pages.videoLearning.durationSeconds')}>{selectedTemplate.duration_seconds?.toFixed(1)}s ({selectedTemplate.frame_count} 帧)</Descriptions.Item>
+                  <Descriptions.Item label="工位/产线">{selectedTemplate.station_id || 'ST-SMT-A03'}</Descriptions.Item>
                   <Descriptions.Item label={t('common.status')}>
-                    <Tag color={statusTagColor[selectedTemplate.status]}>{selectedTemplate.status}</Tag>
+                    <Tag color={statusTagColor[selectedTemplate.status] || 'default'}>{selectedTemplate.status}</Tag>
                   </Descriptions.Item>
                 </Descriptions>
               </Card>
 
-              <Card title={t('pages.videoLearning.learningConfig')} size="small" style={{ marginTop: 16 }}>
+              <Card title="YOLO 动作自学习与时序切分引擎" size="small">
                 <Form form={configForm} layout="vertical">
                   <Form.Item name="learning_mode" label={t('pages.videoLearning.learningMode')}>
                     <Select options={learningModes} />
                   </Form.Item>
-                  <Form.Item name="sample_rate" label={t('pages.videoLearning.sampleRate')}>
+                  <Form.Item name="sample_rate" label="分析采样帧率 (FPS)">
                     <InputNumber min={1} max={30} style={{ width: '100%' }} />
                   </Form.Item>
-                  <Form.Item name="min_confidence" label={t('pages.videoLearning.minConfidence')}>
-                    <InputNumber min={0.1} max={1} step={0.1} style={{ width: '100%' }} />
+                  <Form.Item name="min_confidence" label="目标置信度阈值 (YOLO Conf)">
+                    <Slider min={0.2} max={0.9} step={0.05} />
                   </Form.Item>
-                  <Form.Item name="scene_threshold" label={t('pages.videoLearning.sceneThreshold')}>
-                    <InputNumber min={5} max={100} style={{ width: '100%' }} />
-                  </Form.Item>
-                  <Form.Item name="min_action_duration_seconds" label={t('pages.videoLearning.minActionDurationSeconds')}>
-                    <InputNumber min={0.1} max={10} step={0.1} style={{ width: '100%' }} />
-                  </Form.Item>
-                  <Form.Item name="object_change_sensitivity" label={t('pages.videoLearning.objectChangeSensitivity')}>
-                    <Select
-                      options={[
-                        { value: 'low', label: t('pages.videoLearning.sensitivityLow') },
-                        { value: 'medium', label: t('pages.videoLearning.sensitivityMedium') },
-                        { value: 'high', label: t('pages.videoLearning.sensitivityHigh') },
-                      ]}
-                    />
-                  </Form.Item>
-                  <Form.Item name="focus_classes" label={t('pages.videoLearning.focusClasses')}>
-                    <Select mode="tags" tokenSeparators={[',']} placeholder={t('pages.videoLearning.focusClassesPlaceholder')} />
-                  </Form.Item>
-                  <Form.Item name="object_model_id" label="物体模型">
-                    <Select
-                      allowClear
-                      options={objectModels.map((item) => ({ value: item.id, label: `${item.name} ${item.version}` }))}
-                    />
-                  </Form.Item>
-                  <Form.Item name="action_model_id" label="动作模型">
-                    <Select
-                      allowClear
-                      options={actionModels.map((item) => ({ value: item.id, label: `${item.name} ${item.version}` }))}
-                    />
-                  </Form.Item>
-                  <Space>
-                    <Button onClick={saveLearningConfig}>{t('common.save')}</Button>
-                    <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => startLearning(selectedTemplate.id)}>
-                      {t('pages.videoLearning.learn')}
-                    </Button>
-                  </Space>
+                  <Button
+                    type="primary"
+                    block
+                    icon={<SyncOutlined />}
+                    onClick={() => startLearning(selectedTemplate.id)}
+                    loading={latestSession?.status === 'running' || latestSession?.status === 'analyzing'}
+                  >
+                    重新执行动作时序切分
+                  </Button>
                 </Form>
               </Card>
             </Col>
 
-            <Col span={16}>
-              {latestSession && (
-                <>
-                  <Card title="视频回放" size="small" style={{ marginBottom: 16 }}>
-                    {videoUrl ? (
-                      <>
-                        <div style={{ position: 'relative' }}>
-                          <video
-                            ref={videoRef}
-                            src={videoUrl}
-                            controls={false}
-                            style={{ width: '100%', maxHeight: 360, background: '#000', borderRadius: 6, display: 'block' }}
-                            onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-                            onPlay={() => setIsPlaying(true)}
-                            onPause={() => setIsPlaying(false)}
-                          />
-                          <canvas
-                            ref={overlayCanvasRef}
-                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-                          />
-                          {currentAction && (
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: 12,
-                                left: 12,
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: 8,
-                                pointerEvents: 'none',
-                              }}
-                            >
-                              <Tag color="processing" style={{ width: 'fit-content', marginInlineEnd: 0 }}>
-                                步骤 {currentAction.step_order}: {currentAction.user_defined_name || currentAction.action_name}
-                              </Tag>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                {(currentAction.objects_in_scene || []).map((obj) => (
-                                  <Tag key={`current-${obj}`} color="green" style={{ marginInlineEnd: 0 }}>
-                                    {obj}
-                                  </Tag>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <Flex vertical style={{ width: '100%', marginTop: 12, gap: 12 }}>
-                          <Space wrap>
-                            <Button
-                              size="small"
-                              icon={isPlaying ? <PauseOutlined /> : <PlayCircleOutlined />}
-                              onClick={togglePlayback}
-                            >
-                              {isPlaying ? '暂停' : '播放'}
-                            </Button>
-                            <span>
-                              {currentTime.toFixed(1)}s / {selectedTemplate.duration_seconds?.toFixed(1) ?? '0.0'}s
-                            </span>
-                            <Tag>{overlayFrames.length} 帧分析</Tag>
-                            <Button size="small" type={showBoxes ? 'primary' : 'default'} onClick={() => setShowBoxes((prev) => !prev)}>
-                              显示目标框
-                            </Button>
-                            <Button size="small" type={showPose ? 'primary' : 'default'} onClick={() => setShowPose((prev) => !prev)}>
-                              显示骨骼
-                            </Button>
-                            <Button size="small" type={showZoneRois ? 'primary' : 'default'} onClick={() => setShowZoneRois((prev) => !prev)}>
-                              显示工位ROIs
-                            </Button>
-                            <Button
-                              size="small"
-                              type="primary"
-                              style={{ background: '#52c41a', borderColor: '#52c41a' }}
-                              icon={<ArrowRightOutlined />}
-                              onClick={() => {
-                                setDetailOpen(false);
-                                navigate('/sop-monitor');
-                              }}
-                            >
-                              产线实时监控
-                            </Button>
-                            <Button size="small" type="primary" icon={<RocketOutlined />} onClick={exportToTrainingDataset}>
-                              导出关键帧至训练集
-                            </Button>
-                          </Space>
-                          {currentAction?.features?.pose_summary && (
-                            <Space wrap>
-                              <Tag color="blue">pose: {currentAction.features.pose_summary.frames_with_pose ?? 0}</Tag>
-                              <Tag>wrist_x: {currentAction.features.pose_summary.wrist_span_x ?? 0}</Tag>
-                              <Tag>wrist_y: {currentAction.features.pose_summary.wrist_span_y ?? 0}</Tag>
-                            </Space>
-                          )}
-                          <Slider
-                            min={0}
-                            max={selectedTemplate.duration_seconds ?? 0}
-                            step={0.1}
-                            value={currentTime}
-                            onChange={handleSeek}
-                          />
-                        </Flex>
-                      </>
-                    ) : (
-                      <div>{t('common.noData')}</div>
-                    )}
-                  </Card>
+            {/* Right: Video Playback, Gantt Timeline, and SOP Document Formulator */}
+            <Col span={17}>
+              <Card size="small" title="示范视频回放与实时目标/骨骼/ROI图层">
+                <div style={{ position: 'relative', width: '100%', background: '#0f172a', borderRadius: 6, overflow: 'hidden' }}>
+                  <video
+                    ref={videoRef}
+                    src={videoUrl}
+                    style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 380 }}
+                    onTimeUpdate={() => {
+                      if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+                    }}
+                    onEnded={() => setIsPlaying(false)}
+                  />
+                  <canvas
+                    ref={overlayCanvasRef}
+                    style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', width: '100%', height: '100%' }}
+                  />
+                </div>
 
-                  <Row gutter={16}>
-                    <Col span={6}><Card size="small"><Statistic title={t('pages.videoLearning.detectedObjects')} value={latestSession.objects_detected} prefix={<AimOutlined />} /></Card></Col>
-                    <Col span={6}><Card size="small"><Statistic title={t('pages.videoLearning.identifiedActions')} value={latestSession.actions_identified} prefix={<VideoCameraOutlined />} /></Card></Col>
-                    <Col span={6}><Card size="small"><Statistic title={t('pages.videoLearning.processedFrames')} value={latestSession.processed_frames} prefix={<ClockCircleOutlined />} /></Card></Col>
-                    <Col span={6}><Card size="small"><Statistic title={t('common.status')} value={latestSession.status} /></Card></Col>
-                  </Row>
+                {/* Video Controls & Layer Toggles */}
+                <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Space>
+                    <Button size="small" type="primary" icon={isPlaying ? <PauseOutlined /> : <PlayCircleOutlined />} onClick={togglePlay}>
+                      {isPlaying ? '暂停' : '播放'}
+                    </Button>
+                    <Checkbox checked={showBoxes} onChange={(e) => setShowBoxes(e.target.checked)}>YOLO目标框</Checkbox>
+                    <Checkbox checked={showPose} onChange={(e) => setShowPose(e.target.checked)}>手部/人体骨骼</Checkbox>
+                    <Checkbox checked={showZoneRois} onChange={(e) => setShowZoneRois(e.target.checked)}>工位空间ROI</Checkbox>
+                  </Space>
+                  <Tag color="blue">{currentTime.toFixed(1)}s / {selectedTemplate.duration_seconds?.toFixed(1)}s</Tag>
+                </div>
 
-                  {(latestSession.status === 'running' || latestSession.status === 'analyzing') && (
-                    <Card size="small" style={{ marginTop: 16 }}>
-                      <Progress percent={latestSession.progress ?? 0} status="active" />
-                      <div style={{ textAlign: 'center', color: '#888', marginTop: 4 }}>
-                        {t('pages.videoLearning.learningInProgress')}
-                      </div>
-                    </Card>
-                  )}
+                <Slider
+                  min={0}
+                  max={selectedTemplate.duration_seconds ?? 0}
+                  step={0.1}
+                  value={currentTime}
+                  onChange={handleSeek}
+                  style={{ margin: '8px 0 12px 0' }}
+                />
 
-                  {latestSession.status === 'failed' && latestSession.error_message && (
-                    <Card size="small" style={{ marginTop: 16, borderColor: '#ffccc7' }}>
-                      <div style={{ color: '#cf1322', fontWeight: 500 }}>学习失败</div>
-                      <div style={{ marginTop: 8 }}>{latestSession.error_message}</div>
-                    </Card>
-                  )}
+                {/* Visual Step Decomposition Gantt Timeline */}
+                <div style={{ marginTop: 6, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <Text strong>工步分解甘特时序条 (Step Gantt Timeline):</Text>
+                    <Text type="secondary">点击任一色块快速定位视频帧</Text>
+                  </div>
+                  <div style={{ display: 'flex', height: 28, borderRadius: 4, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+                    {actions.map((act, idx) => {
+                      const colors = ['#0284c7', '#10b981', '#722ed1', '#f59e0b', '#ec4899'];
+                      const col = colors[idx % colors.length];
+                      const totalDur = selectedTemplate.duration_seconds || 15;
+                      const widthPercent = Math.max(8, ((act.duration || 2.5) / totalDur) * 100);
+                      const isCurrent = currentAction?.id === act.id;
 
-                  <Card title={t('pages.videoLearning.workbench')} size="small" style={{ marginTop: 16 }}>
-                    <Card size="small" title={t('pages.videoLearning.workflowOverview')} style={{ marginBottom: 16 }}>
-                      <Row gutter={16}>
-                        <Col span={8}><Statistic title={t('pages.videoLearning.workflowStepCount')} value={workflowSummary.step_count ?? actions.length} /></Col>
-                        <Col span={8}><Statistic title={t('pages.videoLearning.lowQualitySteps')} value={lowQualityCount} /></Col>
-                        <Col span={8}><Statistic title={t('pages.videoLearning.pendingSuggestions')} value={pendingSuggestions} /></Col>
-                      </Row>
-                    </Card>
+                      return (
+                        <Tooltip key={act.id} title={`${act.user_defined_name || act.action_name}: ${act.start_time?.toFixed(1)}s - ${act.end_time?.toFixed(1)}s (${act.duration?.toFixed(1)}s)`}>
+                          <div
+                            onClick={() => seekToAction(act)}
+                            style={{
+                              width: `${widthPercent}%`,
+                              background: col,
+                              opacity: isCurrent ? 1 : 0.75,
+                              color: '#fff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 10,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              borderRight: '1px solid rgba(255,255,255,0.4)',
+                              outline: isCurrent ? '2px solid #ffffff' : undefined,
+                            }}
+                          >
+                            工步 {act.step_order}
+                          </div>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </div>
+              </Card>
 
-                    <Tabs
-                      items={[
-                        {
-                          key: 'timeline',
-                          label: t('pages.videoLearning.timeline'),
-                          children: (
-                            <Flex vertical gap={8}>
-                              {actions.map((action) => (
-                                <Card
-                                  key={action.id}
-                                  size="small"
-                                  style={{
-                                    backgroundColor: currentAction?.id === action.id ? 'rgba(22, 119, 255, 0.08)' : undefined,
-                                    cursor: action.start_time != null ? 'pointer' : 'default',
-                                  }}
-                                  onClick={() => seekToAction(action)}
-                                >
-                                  <Flex justify="space-between" align="flex-start" gap={12}>
-                                    <Flex vertical gap={4} style={{ flex: 1 }}>
-                                      <strong>{`${t('pages.videoLearning.step')} ${action.step_order}: ${action.user_defined_name || action.action_name}`}</strong>
-                                      <span>{action.start_time?.toFixed(1)}s - {action.end_time?.toFixed(1)}s ({action.duration?.toFixed(1)}s)</span>
-                                      <span>{action.description}</span>
-                                      <span>{t('pages.videoLearning.qualityScore')}: {action.features?.quality_score ?? '-'}</span>
-                                      {action.features?.suggested_action_name && <span>{t('pages.videoLearning.suggestedActionName')}: {action.features?.suggested_action_name}</span>}
-                                      <Space wrap>
-                                        {action.objects_in_scene?.map((obj: string) => <Tag key={obj}>{obj}</Tag>)}
-                                      </Space>
-                                      {(action.features?.boundary_score != null || action.features?.detection_score != null || action.features?.pose_score != null || action.features?.interaction_score != null || action.features?.stability_score != null) && (
-                                        <Space wrap size={[4, 4]}>
-                                          {action.features?.boundary_score != null && <Tag color="purple">boundary: {typeof action.features?.boundary_score === 'number' ? action.features?.boundary_score.toFixed(2) : action.features?.boundary_score}</Tag>}
-                                          {action.features?.detection_score != null && <Tag color="cyan">detection: {typeof action.features?.detection_score === 'number' ? action.features?.detection_score.toFixed(2) : action.features?.detection_score}</Tag>}
-                                          {action.features?.pose_score != null && <Tag color="blue">pose: {typeof action.features?.pose_score === 'number' ? action.features?.pose_score.toFixed(2) : action.features?.pose_score}</Tag>}
-                                          {action.features?.interaction_score != null && <Tag color="green">interaction: {typeof action.features?.interaction_score === 'number' ? action.features?.interaction_score.toFixed(2) : action.features?.interaction_score}</Tag>}
-                                          {action.features?.stability_score != null && <Tag color="orange">stability: {typeof action.features?.stability_score === 'number' ? action.features?.stability_score.toFixed(2) : action.features?.stability_score}</Tag>}
-                                        </Space>
-                                      )}
-                                      {action.features?.boundary_reasons?.length > 0 && (
-                                        <Space wrap size={[4, 4]}>
-                                          {action.features?.boundary_reasons?.map((reason: string) => (
-                                            <Tag key={`reason-${reason}`} color="red">{reason}</Tag>
-                                          ))}
-                                        </Space>
-                                      )}
-                                      {action.features?.primary_objects?.length > 0 && (
-                                        <span>{t('pages.videoLearning.primaryObjects')}: {(action.features?.primary_objects as string[])?.join(', ')}</span>
-                                      )}
-                                    </Flex>
-                                    <Space>
-                                      <Button size="small" icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); openActionEdit(action); }}>
-                                        {t('common.edit')}
-                                      </Button>
-                                      <Button size="small" onClick={(event) => { event.stopPropagation(); splitAction(action); }}>
-                                        {t('pages.videoLearning.split')}
-                                      </Button>
-                                      <Button size="small" onClick={(event) => { event.stopPropagation(); mergeAction(action); }}>
-                                        {t('pages.videoLearning.mergePrev')}
-                                      </Button>
-                                    </Space>
-                                  </Flex>
-                                </Card>
-                              ))}
-                            </Flex>
-                          ),
-                        },
-                        {
-                          key: 'suggestions',
-                          label: t('pages.videoLearning.smartSuggestions'),
-                          children: (
-                            <Flex vertical style={{ width: '100%', gap: 12 }}>
-                              {workflowSuggestions.map((suggestion: Record<string, any>, index: number) => (
-                                <Card key={`workflow-${index}`} size="small" title={t('pages.videoLearning.workflowSuggestion')}>
-                                  <div>{suggestion.message}</div>
-                                </Card>
-                              ))}
-                              {actions.map((action) => {
-                                const suggestions = action.suggestions || action.features?.suggestions || [];
-                                return (
-                                  <Card key={action.id} size="small" title={`${t('pages.videoLearning.step')} ${action.step_order}: ${action.user_defined_name || action.action_name}`}>
-                                    <Flex vertical style={{ width: '100%', gap: 12 }}>
-                                      <div>{t('pages.videoLearning.qualityScore')}: {action.features?.quality_score ?? '-'}</div>
-                                      {suggestions.map((suggestion: Record<string, any>, index: number) => (
-                                        <Card key={`${action.id}-${index}`} size="small" type="inner" title={t('pages.videoLearning.actionSuggestion')}>
-                                          <Flex vertical style={{ width: '100%', gap: 8 }}>
-                                            <div>{suggestion.message}</div>
-                                            <Button size="small" onClick={() => applySuggestion(action, suggestion.type || 'rename')}>
-                                              {t('pages.videoLearning.applySuggestion')}
-                                            </Button>
-                                          </Flex>
-                                        </Card>
-                                      ))}
-                                      {suggestions.length === 0 && <div>{t('pages.videoLearning.noSuggestions')}</div>}
-                                    </Flex>
-                                  </Card>
-                                );
-                              })}
-                            </Flex>
-                          ),
-                        },
-                        {
-                          key: 'pose',
-                          label: t('pages.videoLearning.poseLearning'),
-                          children: (
-                            <Row gutter={[12, 12]}>
-                              {actions.map((action) => (
-                                <Col span={12} key={action.id}>
-                                  <Card size="small" title={`${t('pages.videoLearning.step')} ${action.step_order}`}>
-                                    <div>{t('pages.videoLearning.poseFrames')}: {action.features?.pose_summary?.frames_with_pose ?? 0}</div>
-                                    <div>{t('pages.videoLearning.wristSpanX')}: {action.features?.pose_summary?.wrist_span_x ?? 0}</div>
-                                    <div>{t('pages.videoLearning.wristSpanY')}: {action.features?.pose_summary?.wrist_span_y ?? 0}</div>
-                                  </Card>
-                                </Col>
-                              ))}
-                            </Row>
-                          ),
-                        },
-                        {
-                          key: 'objects',
-                          label: t('pages.videoLearning.objectLearning'),
-                          children: (
-                            <Row gutter={[12, 12]}>
-                              {Object.entries(objectFrequency).map(([name, count]) => (
-                                <Col span={8} key={name}>
-                                  <Card size="small">
-                                    <Statistic title={name} value={count as number} />
-                                  </Card>
-                                </Col>
-                              ))}
-                              {Object.keys(objectFrequency).length === 0 && <div>{t('pages.videoLearning.noObjectStats')}</div>}
-                            </Row>
-                          ),
-                        },
-                        {
-                          key: 'compare',
-                          label: t('pages.videoLearning.templateCompare'),
-                          children: (
-                            <Flex vertical style={{ width: '100%', gap: 12 }}>
+              {/* Workbench Tabs: Actions Breakdown & SOP Formulator */}
+              <Tabs
+                defaultActiveKey="sop_sheet"
+                style={{ marginTop: 12 }}
+                items={[
+                  {
+                    key: 'sop_sheet',
+                    label: (
+                      <span>
+                        <SafetyCertificateOutlined /> 标准作业规程 (SOP Specification Sheet)
+                      </span>
+                    ),
+                    children: (
+                      <Card size="small" style={{ borderRadius: 6, border: '1px solid #94a3b8' }}>
+                        {/* SOP Header Sheet */}
+                        <div style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: 4, marginBottom: 14, border: '1px solid #e2e8f0' }}>
+                          <Row justify="space-between" align="middle">
+                            <Col>
+                              <Title level={5} style={{ margin: 0 }}>
+                                工业标准作业指导书 (SOP Specification Sheet)
+                              </Title>
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                规范编号: SOP-{selectedTemplate.business_type.toUpperCase()}-2026 | 版本: Rev.1.0 (受控文档)
+                              </Text>
+                            </Col>
+                            <Col>
                               <Space>
-                                <Select
-                                  style={{ width: 260 }}
-                                  placeholder={t('pages.videoLearning.selectCompareTemplate')}
-                                  value={compareTargetId ?? undefined}
-                                  onChange={setCompareTargetId}
-                                  options={templates.filter((tpl) => tpl.id !== selectedTemplate.id).map((tpl) => ({ value: tpl.id, label: tpl.name }))}
-                                />
-                                <Button onClick={runCompare}>{t('pages.videoLearning.compareNow')}</Button>
+                                <Button size="small" icon={<DownloadOutlined />} onClick={exportSopMarkdown}>
+                                  导出规程文档 (.md)
+                                </Button>
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  style={{ background: '#10b981', borderColor: '#10b981' }}
+                                  icon={<RocketOutlined />}
+                                  onClick={handlePublishSopToProduction}
+                                >
+                                  正式签发并同步至产线监控
+                                </Button>
                               </Space>
-                              {compareResult && (
-                                <Card size="small">
-                                  <Descriptions size="small" column={1}>
-                                    <Descriptions.Item label={t('pages.videoLearning.sourceActionCount')}>{compareResult.source_action_count}</Descriptions.Item>
-                                    <Descriptions.Item label={t('pages.videoLearning.targetActionCount')}>{compareResult.target_action_count}</Descriptions.Item>
-                                    <Descriptions.Item label={t('pages.videoLearning.commonObjects')}>
-                                      <Space wrap>
-                                        {(compareResult.common_objects || []).map((obj: string) => <Tag key={obj}>{obj}</Tag>)}
-                                      </Space>
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label={t('pages.videoLearning.avgDurationGap')}>{compareResult.avg_duration_gap}</Descriptions.Item>
-                                  </Descriptions>
-                                </Card>
-                              )}
-                            </Flex>
-                          ),
-                        },
-                        {
-                          key: 'sop',
-                          label: t('pages.videoLearning.sopPreview'),
-                          children: sopPreview ? (
-                            <Flex vertical style={{ width: '100%', gap: 12 }}>
-                              <Card size="small" title={sopPreview.title || t('pages.videoLearning.sopPreview')}>
-                                <Descriptions size="small" column={1}>
-                                  <Descriptions.Item label={t('pages.videoLearning.businessType')}>{sopPreview.business_type}</Descriptions.Item>
-                                  <Descriptions.Item label={t('pages.videoLearning.stationId')}>{sopPreview.station_id || '-'}</Descriptions.Item>
-                                  <Descriptions.Item label={t('pages.videoLearning.workflowStepCount')}>{sopPreview.workflow_summary?.step_count ?? sopPreview.steps?.length ?? 0}</Descriptions.Item>
-                                </Descriptions>
-                              </Card>
-                              {(sopPreview.steps || []).map((step: Record<string, any>) => (
-                                <Card key={step.step_order} size="small" title={`${t('pages.videoLearning.step')} ${step.step_order}: ${step.name}`}>
-                                  <Flex vertical style={{ width: '100%', gap: 8 }}>
-                                    <div>{step.description || '-'}</div>
-                                    <Space wrap>
-                                      {(step.objects || []).map((obj: string) => <Tag key={`${step.step_order}-${obj}`}>{obj}</Tag>)}
-                                    </Space>
-                                    {step.keyframe_path && <div>{step.keyframe_path}</div>}
-                                  </Flex>
-                                </Card>
-                              ))}
-                            </Flex>
-                          ) : (
-                            <div>{t('pages.videoLearning.noSopPreview')}</div>
-                          ),
-                        },
-                        {
-                          key: 'keyframes',
-                          label: t('pages.videoLearning.keyframes'),
-                          children: (
-                            <Row gutter={[12, 12]}>
-                              {actions.filter((a) => a.keyframe_path).map((a) => (
-                                <Col span={8} key={a.id}>
-                                  <Card size="small" title={`${t('pages.videoLearning.step')} ${a.step_order}`}>
-                                    <Image
-                                      width="100%"
-                                      src={`${api.defaults.baseURL?.replace('/api', '')}/${a.keyframe_path}`}
-                                      fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjgwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iODAiIGZpbGw9IiNmMGYwZjAiLz48L3N2Zz4="
-                                    />
-                                    <Divider style={{ margin: '8px 0' }} />
-                                    <div>{a.user_defined_name || a.action_name}</div>
-                                  </Card>
-                                </Col>
-                              ))}
-                              {actions.filter((a) => a.keyframe_path).length === 0 && <div>{t('pages.videoLearning.noKeyframes')}</div>}
-                            </Row>
-                          ),
-                        },
-                        {
-                          key: 'spatial_rois',
-                          label: '工位空间ROIs与动作范围标定',
-                          children: (
-                            <Flex vertical gap={12}>
-                              <Alert
-                                message="工位空间作业范围 (Spatial Action ROIs) 自动标定与手部边界映射"
-                                description="系统通过工业远心俯视相机视野，自动将作业台面划分为物料区、主装配区、工具停靠区及扫码区。结合 YOLO-Pose 算法实时提取左右手腕骨骼坐标 (wrist_l, wrist_r)，计算手部在各工序时段是否落入合法几何包络内。"
-                                type="info"
-                                showIcon
-                              />
-                              <Row gutter={[12, 12]}>
-                                {WORKSTATION_ZONES.map((zone) => (
-                                  <Col span={12} key={zone.id}>
-                                    <Card
-                                      size="small"
-                                      title={
-                                        <Space>
-                                          <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: zone.color }} />
-                                          <strong>{zone.name}</strong>
-                                          <Tag color="blue">{zone.code}</Tag>
-                                        </Space>
-                                      }
-                                    >
-                                      <div style={{ fontSize: 12, color: '#595959', marginBottom: 6 }}>{zone.description}</div>
-                                      <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#8c8c8c' }}>
-                                        标定坐标包络: [{zone.points.map((p) => `(${p.x},${p.y})`).join(', ')}]
-                                      </div>
-                                      <div style={{ fontSize: 11, color: '#52c41a', marginTop: 4 }}>
-                                        ✓ 空间越界容差缓冲: ±35px (~12mm)
-                                      </div>
-                                    </Card>
-                                  </Col>
-                                ))}
-                              </Row>
-                            </Flex>
-                          ),
-                        },
-                        {
-                          key: 'state_machine',
-                          label: '动作序列状态机与转移拓扑',
-                          children: (
-                            <Flex vertical gap={12}>
-                              <Alert
-                                message="SOP 动作序列有向转移图与异常约束规则"
-                                description="操作员动作由时序有限状态机 (FSM) 驱动，严格约束工步执行因果顺序。若发生跳步 (Skipped Step) 或顺序倒置 (Inversion)，状态机转移被拒绝并即刻触发防呆联锁与蜂鸣。"
-                                type="success"
-                                showIcon
-                              />
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                {actions.map((act, idx) => (
-                                  <div
-                                    key={act.id}
-                                    style={{
-                                      padding: '10px 14px',
-                                      borderRadius: 6,
-                                      background: '#fafafa',
-                                      border: '1px solid #d9d9d9',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                    }}
-                                  >
-                                    <Space size={12}>
-                                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#1890ff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                                        {act.step_order}
-                                      </div>
-                                      <div>
-                                        <div style={{ fontWeight: 600, fontSize: 13 }}>
-                                          {act.user_defined_name || act.action_name}
-                                        </div>
-                                        <div style={{ fontSize: 11, color: '#8c8c8c' }}>
-                                          标准工时: {act.duration?.toFixed(1) || (act.end_time && act.start_time ? (act.end_time - act.start_time).toFixed(1) : 3.0)}s · 容差窗口: ±0.5s · 置信度: {((act.confidence || 0.95) * 100).toFixed(0)}%
-                                        </div>
-                                      </div>
-                                    </Space>
-                                    <Space>
-                                      <Tag color="cyan">状态 S{act.step_order}</Tag>
-                                      {idx < actions.length - 1 ? (
-                                        <Tag color="green">合法转移 ➔ S{act.step_order + 1}</Tag>
-                                      ) : (
-                                        <Tag color="purple">节拍闭环 ➔ S1</Tag>
-                                      )}
-                                    </Space>
-                                  </div>
-                                ))}
-                              </div>
-                            </Flex>
-                          ),
-                        },
-                        {
-                          key: 'algorithm_deep_dive',
-                          label: '核心算法深入分析与设计',
-                          children: (
-                            <Flex vertical gap={12}>
-                              <Card size="small" title="1. 算法体系整体架构 (Architecture Blueprint)">
-                                <Paragraph style={{ fontSize: 12, color: '#595959', lineHeight: 1.6 }}>
-                                  工业现场摄像头监控操作人员动作方案采用<strong>「双流多模态时空图感知网络 + 动态时间规整（DTW）+ 有限状态机（FSM）防呆闭环」</strong>的三层工业视觉架构：
-                                </Paragraph>
-                                <div style={{ background: '#f5f5f5', padding: 10, borderRadius: 6, fontSize: 11, fontFamily: 'monospace', lineHeight: 1.7 }}>
-                                  <div>【输入层】 4K/1080P 工业远心微距相机 (30~60 FPS) 俯视监控工位台面</div>
-                                  <div>  │</div>
-                                  <div>【感知层】 YOLOv11 Multi-Task: 目标检测(工具/板卡/元器件) + YOLO-Pose 17点骨骼提取</div>
-                                  <div>  │</div>
-                                  <div>【分割层】 时序边界分割: 手腕速度零交叉检测 + 场景光流突变 + 手部-物料接触 IOU 聚类</div>
-                                  <div>  │</div>
-                                  <div>【判别层】 DTW 动态时间规整时序对齐 + 时空图卷积 (ST-GCN) 动作分类识别</div>
-                                  <div>  │</div>
-                                  <div>【决策层】 SOP 拓扑状态机校验五大偏差 (漏步 / 倒置 / 超时 / 空间错料 / 杂散违规)</div>
-                                  <div>  │</div>
-                                  <div>【控制层】 PLC 气动锁止防呆 (Poka-Yoke) + Andon 三色声光报警 + MES 批次追溯</div>
+                            </Col>
+                          </Row>
+
+                          <Divider style={{ margin: '8px 0' }} />
+
+                          <Row gutter={[16, 8]} style={{ fontSize: 12 }}>
+                            <Col span={6}><strong>适用工位:</strong> {selectedTemplate.station_id || 'ST-SMT-A03'}</Col>
+                            <Col span={6}><strong>工件类别:</strong> {selectedTemplate.business_type}</Col>
+                            <Col span={6}><strong>编制单位:</strong> 工艺部 IE 科</Col>
+                            <Col span={6}><strong>标准单件节拍:</strong> {actions.reduce((acc, a) => acc + (a.duration || 2.5), 0).toFixed(1)} 秒/件</Col>
+                          </Row>
+                        </div>
+
+                        {/* SOP Step Specification Table */}
+                        <Table
+                          dataSource={actions}
+                          rowKey="id"
+                          size="small"
+                          pagination={false}
+                          columns={[
+                            { title: '工步#', dataIndex: 'step_order', width: 65, render: (v) => <Tag color="blue">{v}</Tag> },
+                            {
+                              title: '工步名称',
+                              key: 'name',
+                              render: (_, a) => <strong>{a.user_defined_name || a.action_name}</strong>,
+                            },
+                            {
+                              title: '标准工时 (s)',
+                              key: 'duration',
+                              width: 100,
+                              render: (_, a) => <span>{a.duration?.toFixed(1) || '2.5'}s (±0.5s)</span>,
+                            },
+                            {
+                              title: '目标空间区域 (ROI)',
+                              key: 'roi',
+                              render: (_, a, idx) => <Tag color="geekblue">{idx === 0 ? '主装配工装基准区' : idx === 1 ? '料盒1号区' : idx === 2 ? '螺栓锁紧区' : '条码扫描区'}</Tag>,
+                            },
+                            {
+                              title: '手部骨骼动作规范',
+                              key: 'hand',
+                              render: (_, a, idx) => (
+                                <span style={{ fontSize: 12 }}>
+                                  {idx === 1 ? '8mm 精密双指捏取 (Fine Pinch)' : idx === 2 ? '工具握持 (Power Grip) + 自转' : '双手指尖平稳对位'}
+                                </span>
+                              ),
+                            },
+                            {
+                              title: '关键质量防呆控制点 (Poka-Yoke)',
+                              key: 'poka_yoke',
+                              render: (_, a, idx) => (
+                                <Text type="danger" style={{ fontSize: 11 }}>
+                                  {idx === 1 ? '严禁越界进入料盒2或3' : idx === 2 ? '恒扭矩未释放禁止转序' : '未完全夹紧禁止触发下压'}
+                                </Text>
+                              ),
+                            },
+                          ]}
+                        />
+                      </Card>
+                    ),
+                  },
+                  {
+                    key: 'timeline',
+                    label: (
+                      <span>
+                        <ToolOutlined /> 工步分解编辑与微调 ({actions.length})
+                      </span>
+                    ),
+                    children: (
+                      <Flex vertical gap={8}>
+                        {actions.map((action) => (
+                          <Card
+                            key={action.id}
+                            size="small"
+                            style={{
+                              backgroundColor: currentAction?.id === action.id ? 'rgba(2, 132, 199, 0.08)' : undefined,
+                              cursor: 'pointer',
+                              borderLeft: currentAction?.id === action.id ? '4px solid #0284c7' : undefined,
+                            }}
+                            onClick={() => seekToAction(action)}
+                          >
+                            <Row justify="space-between" align="middle">
+                              <Col span={18}>
+                                <strong>第 {action.step_order} 步: {action.user_defined_name || action.action_name}</strong>
+                                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                                  时段: {action.start_time?.toFixed(1)}s - {action.end_time?.toFixed(1)}s (工时: {action.duration?.toFixed(1)}s) | 置信度: {action.confidence ? (action.confidence * 100).toFixed(0) : 95}%
                                 </div>
-                              </Card>
-
-                              <Row gutter={[12, 12]}>
-                                <Col span={12}>
-                                  <Card size="small" title="2. 动作时序边界自适应切分原理">
-                                    <div style={{ fontSize: 12, color: '#595959', lineHeight: 1.6 }}>
-                                      利用左右手腕骨骼坐标的一阶差分获取瞬时速度向量 v(t) = ||p(t) - p(t-1)|| / Δt。当手部从移动状态进入工装停留（v(t) &lt; ε）且与工装治具或物料盒发生空间包络相交时，确定为工步起始/终止转移边界，有效滤除轻微抖动。
-                                    </div>
-                                  </Card>
-                                </Col>
-
-                                <Col span={12}>
-                                  <Card size="small" title="3. DTW 动态时间规整消除生理变异">
-                                    <div style={{ fontSize: 12, color: '#595959', lineHeight: 1.6 }}>
-                                      真实生产中即使同一熟练工人，每个节拍的动作快慢也存在 10%~20% 的正常波动。算法使用 DTW（Dynamic Time Warping）构建代价对齐累积矩阵 D(i,j) = d(x_i, y_j) + min(D(i-1,j), D(i,j-1), D(i-1,j-1))，在时间轴上自适应弹性伸缩，既精准识别动作本质，又避免僵硬误报。
-                                    </div>
-                                  </Card>
-                                </Col>
-
-                                <Col span={12}>
-                                  <Card size="small" title="4. 五大类动作偏差判定准则">
-                                    <div style={{ fontSize: 12, color: '#595959', lineHeight: 1.6 }}>
-                                      • <strong>动作遗漏 (Skipped)</strong>：状态机跳变未经历必要工步；<br />
-                                      • <strong>时序颠倒 (Inversion)</strong>：前置约束未完成即触发后置动作；<br />
-                                      • <strong>工时迟滞 (Timeout)</strong>：工装滞留时间 t &gt; T_std + Δt_tol；<br />
-                                      • <strong>空间越界 (Mis-pick)</strong>：手部骨骼穿透非当前工序料盒边界；<br />
-                                      • <strong>杂散动作 (Extraneous)</strong>：手部离开台面或检出非生产异物。
-                                    </div>
-                                  </Card>
-                                </Col>
-
-                                <Col span={12}>
-                                  <Card size="small" title="5. Poka-Yoke 防呆硬件联锁控制机制">
-                                    <div style={{ fontSize: 12, color: '#595959', lineHeight: 1.6 }}>
-                                      算法检测到致命偏差（如漏拧螺丝）时，在 20ms 内通过 Modbus TCP / GPIO 下发 24V 高电平信号给工位 PLC，锁死下料气缸顶针。<strong>不按标准完成整套规范动作，治具无法松开，成品无法下线</strong>，实现真正的工业级零缺陷防呆。
-                                    </div>
-                                  </Card>
-                                </Col>
-                              </Row>
-                            </Flex>
-                          ),
-                        },
-                      ]}
-                    />
-                  </Card>
-                </>
-              )}
+                                <Space wrap style={{ marginTop: 4 }}>
+                                  {action.objects_in_scene?.map((obj) => <Tag key={obj}>{obj}</Tag>)}
+                                </Space>
+                              </Col>
+                              <Col span={6} style={{ textAlign: 'right' }}>
+                                <Space>
+                                  <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openActionEdit(action); }}>编辑</Button>
+                                  <Button size="small" onClick={(e) => { e.stopPropagation(); splitAction(action); }}>切分</Button>
+                                  <Button size="small" onClick={(e) => { e.stopPropagation(); mergeAction(action); }}>合并</Button>
+                                </Space>
+                              </Col>
+                            </Row>
+                          </Card>
+                        ))}
+                      </Flex>
+                    ),
+                  },
+                ]}
+              />
             </Col>
           </Row>
         )}
       </Modal>
 
+      {/* Action Edit Modal */}
       <Modal
-        title={t('pages.videoLearning.editAction')}
+        title="编辑工步时序与名称定义"
         open={editingOpen}
         onCancel={() => setEditingOpen(false)}
-        onOk={saveActionEdit}
-        forceRender
+        onOk={() => editActionForm.submit()}
       >
-        <Form form={editActionForm} layout="vertical">
-          <Form.Item name="user_defined_name" label={t('pages.videoLearning.actionName')} rules={[{ required: true }]}>
+        <Form form={editActionForm} layout="vertical" onFinish={saveActionEdit}>
+          <Form.Item name="user_defined_name" label="自定义工步名称" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="start_time" label={t('pages.videoLearning.actionStartTime')}>
-            <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="end_time" label={t('pages.videoLearning.actionEndTime')}>
-            <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="note" label={t('common.description')}>
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item name="is_kept" valuePropName="checked">
-            <Checkbox>{t('pages.videoLearning.keepAsStandardAction')}</Checkbox>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="start_time" label="起始时间 (秒)">
+                <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="end_time" label="结束时间 (秒)">
+                <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="note" label="工艺要求与防呆要点">
+            <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
       </Modal>

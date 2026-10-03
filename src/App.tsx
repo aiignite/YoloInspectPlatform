@@ -32,6 +32,7 @@ const WaveSolderInspectionLab = lazy(() => import('./pages/WaveSolderInspectionL
 const SopMonitor = lazy(() => import('./pages/SopMonitor'));
 const SafetyFenceConfig = lazy(() => import('./pages/SafetyFenceConfig'));
 const HandActionLab = lazy(() => import('./pages/HandActionLab'));
+const GoldenStandardLab = lazy(() => import('./pages/GoldenStandard'));
 
 function PageFallback() {
   return (
@@ -72,6 +73,7 @@ function App() {
               <Route path="alerts" element={<Alerts />} />
               <Route path="statistics" element={<Statistics />} />
               <Route path="video-learning" element={<VideoLearning />} />
+              <Route path="golden-standard" element={<GoldenStandardLab />} />
               <Route path="sop-monitor" element={<SopMonitor />} />
               <Route path="users" element={<Users />} />
               <Route path="mes" element={<MES />} />

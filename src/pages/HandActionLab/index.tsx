@@ -51,6 +51,9 @@ import {
   CheckOutlined,
   ScanOutlined,
   LoadingOutlined,
+  FilterOutlined,
+  DashboardOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import {
   HandLandmark,
@@ -67,7 +70,12 @@ import {
 } from './handGeometry';
 import { HAND_SCENARIOS } from './handPresets';
 import { generateHandActionPythonScript } from './codeGenerator';
-import { mediapipeHandService, MediapipeHandResult } from './mediapipeService';
+import {
+  mediapipeHandService,
+  MediapipeHandResult,
+  TrackingFilterOptions,
+  DebugMetrics,
+} from './mediapipeService';
 import api from '../../utils/api';
 
 const { Title, Text, Paragraph } = Typography;
@@ -136,6 +144,28 @@ const HandActionLab: React.FC = () => {
   const [isHandInView, setIsHandInView] = useState<boolean>(false);
   const [trackingEngine, setTrackingEngine] = useState<string>('MediaPipe Hands 3D');
 
+  // Tracking Filter & Confidence Threshold State
+  const [filterOptions, setFilterOptions] = useState<TrackingFilterOptions>({
+    smoothingFactor: 0.65,
+    enableSmoothing: true,
+    outlierRejection: true,
+    maxJumpDistancePx: 90,
+    minDetectionConfidence: 0.35,
+    minTrackingConfidence: 0.35,
+    minVisibilityThreshold: 0.40,
+  });
+
+  // Real-time Visual Debug & Sensitivity Metrics
+  const [debugMetrics, setDebugMetrics] = useState<DebugMetrics>({
+    capturedCount: 21,
+    rawJitterPx: 2.1,
+    smoothedJitterPx: 0.5,
+    stabilityScore: 98,
+    inferenceFps: 35,
+    perLandmarkConf: new Array(21).fill(0.98),
+    pipelineLatencyMs: 11.2,
+  });
+
   // YOLO detection box (tightly wraps detected hand)
   const [yoloBbox, setYoloBbox] = useState<{ x: number; y: number; w: number; h: number; confidence: number }>({
     x: 320,
@@ -177,12 +207,20 @@ const HandActionLab: React.FC = () => {
   const [showLandmarkNames, setShowLandmarkNames] = useState<boolean>(true);
   const [showPinchVector, setShowPinchVector] = useState<boolean>(true);
   const [showDepth3D, setShowDepth3D] = useState<boolean>(true);
+  const [showDebugHUD, setShowDebugHUD] = useState<boolean>(true);
 
   // 8. Modals
   const [codeModalVisible, setCodeModalVisible] = useState<boolean>(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const simStepRef = useRef<number>(0);
+
+  // Update tracking filter config dynamically
+  const handleUpdateFilter = (patch: Partial<TrackingFilterOptions>) => {
+    const updated = { ...filterOptions, ...patch };
+    setFilterOptions(updated);
+    mediapipeHandService.updateFilterOptions(patch);
+  };
 
   // -------------------------------------------------------------
   // Local Webcam Connection & Lifecycle Handlers
@@ -290,6 +328,9 @@ const HandActionLab: React.FC = () => {
           confidence: res.confidence,
         });
         setTrackingEngine(res.engine === 'mediapipe_wasm' ? 'MediaPipe Hands 3D' : 'CV 空间轮廓');
+        if (res.debugMetrics) {
+          setDebugMetrics(res.debugMetrics);
+        }
       } else {
         setIsHandInView(false);
       }
@@ -429,7 +470,6 @@ const HandActionLab: React.FC = () => {
     if (cameraMode === 'local_webcam' && videoRef.current && videoRef.current.readyState >= 2) {
       ctx.save();
       if (mirrorMode) {
-        // Horizontal flip for natural selfie mirror perspective
         ctx.translate(width, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(videoRef.current, 0, 0, width, height);
@@ -438,7 +478,7 @@ const HandActionLab: React.FC = () => {
       }
       ctx.restore();
 
-      // Subtle translucent scrim to ensure skeleton and labels pop clearly
+      // Translucent scrim
       ctx.fillStyle = 'rgba(15, 23, 42, 0.12)';
       ctx.fillRect(0, 0, width, height);
 
@@ -508,7 +548,7 @@ const HandActionLab: React.FC = () => {
       }
     }
 
-    // 2. Dangerous Nip Hazard Zone (Rendered in both modes)
+    // 2. Dangerous Nip Hazard Zone
     ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
     ctx.fillRect(hazardZone.x, hazardZone.y, hazardZone.w, hazardZone.h);
     ctx.strokeStyle = '#ef4444';
@@ -520,7 +560,7 @@ const HandActionLab: React.FC = () => {
     ctx.font = 'bold 11px sans-serif';
     ctx.fillText('⚠ 机械行程剪切危险区 (Nip Hazard)', hazardZone.x + 4, hazardZone.y + 18);
 
-    // 3. YOLOv11-Hand Bounding Box (Tightly fitted to real hand!)
+    // 3. YOLOv11-Hand Bounding Box
     if (showYoloBbox && (cameraMode !== 'local_webcam' || isHandInView)) {
       const boxColor = detectedAction === 'hazard_reach' ? '#ef4444' : '#00f2fe';
       ctx.strokeStyle = boxColor;
@@ -542,13 +582,12 @@ const HandActionLab: React.FC = () => {
       const len = 14;
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 3;
-      // Top-left
       ctx.beginPath();
       ctx.moveTo(yoloBbox.x, yoloBbox.y + len);
       ctx.lineTo(yoloBbox.x, yoloBbox.y);
       ctx.lineTo(yoloBbox.x + len, yoloBbox.y);
       ctx.stroke();
-      // Bottom-right
+
       ctx.beginPath();
       ctx.moveTo(yoloBbox.x + yoloBbox.w - len, yoloBbox.y + yoloBbox.h);
       ctx.lineTo(yoloBbox.x + yoloBbox.w, yoloBbox.y + yoloBbox.h);
@@ -576,7 +615,7 @@ const HandActionLab: React.FC = () => {
       );
     }
 
-    // 5. Draw Skeletal Bone Links (21 Landmarks Connections)
+    // 5. Draw Skeletal Bone Links
     if (showBoneLinks && landmarks.length >= 21 && (cameraMode !== 'local_webcam' || isHandInView)) {
       HAND_CONNECTIONS.forEach(([startIdx, endIdx]) => {
         const p1 = landmarks[startIdx];
@@ -600,7 +639,7 @@ const HandActionLab: React.FC = () => {
       });
     }
 
-    // 6. Draw Pinch Euclidean Distance Vector (Thumb Tip 4 to Index Tip 8)
+    // 6. Draw Pinch Euclidean Distance Vector
     if (showPinchVector && landmarks[4] && landmarks[8] && (cameraMode !== 'local_webcam' || isHandInView)) {
       const pThumb = landmarks[4];
       const pIndex = landmarks[8];
@@ -622,17 +661,31 @@ const HandActionLab: React.FC = () => {
       ctx.fillText(`${telemetry.pinchDistanceMm} mm`, midX + 8, midY - 4);
     }
 
-    // 7. Draw 21 Landmark Joint Nodes
+    // 7. Draw 21 Landmark Joint Nodes with Confidence Filter Highlighting
     if (cameraMode !== 'local_webcam' || isHandInView) {
       landmarks.forEach((lm) => {
         const isSelected = lm.id === selectedLandmarkId;
         const isTip = [4, 8, 12, 16, 20].includes(lm.id);
+        const isLowConf = (lm.visibility ?? 1) < filterOptions.minVisibilityThreshold;
 
         const baseRadius = isTip ? 6 : isSelected ? 5.5 : 4;
         const depthScale = showDepth3D ? Math.max(0.6, 1 + lm.z * 0.02) : 1;
         const r = baseRadius * depthScale;
 
-        ctx.fillStyle = isSelected
+        // Draw warning halo around low-confidence / occluded points
+        if (isLowConf) {
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([2, 2]);
+          ctx.beginPath();
+          ctx.arc(lm.x, lm.y, r + 4, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        ctx.fillStyle = isLowConf
+          ? '#f59e0b'
+          : isSelected
           ? '#ffffff'
           : isTip
           ? '#38bdf8'
@@ -648,7 +701,7 @@ const HandActionLab: React.FC = () => {
         ctx.stroke();
 
         if (showLandmarkNames) {
-          ctx.fillStyle = isSelected ? '#38bdf8' : '#e2e8f0';
+          ctx.fillStyle = isSelected ? '#38bdf8' : isLowConf ? '#fbbf24' : '#e2e8f0';
           ctx.font = '9px monospace';
           const shortName = lm.nameZh.split(' ')[0];
           ctx.fillText(shortName, lm.x + 6, lm.y + 3);
@@ -672,6 +725,23 @@ const HandActionLab: React.FC = () => {
       18,
       27
     );
+
+    // 9. Bottom Debug HUD Overlay (Smoothing & Jitter Stats)
+    if (showDebugHUD && cameraMode === 'local_webcam' && isHandInView) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.fillRect(10, height - 34, 460, 24);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px monospace';
+      const jitterDiffPercent = Math.max(
+        0,
+        Math.round((1 - debugMetrics.smoothedJitterPx / Math.max(0.1, debugMetrics.rawJitterPx)) * 100)
+      );
+      ctx.fillText(
+        `平滑滤波: ${filterOptions.enableSmoothing ? `开启(α=${filterOptions.smoothingFactor})` : '关闭'} | 抖动消除: -${jitterDiffPercent}% | 稳定性: ${debugMetrics.stabilityScore}% | 捕获: ${debugMetrics.capturedCount}/21`,
+        18,
+        height - 18
+      );
+    }
   }, [
     cameraMode,
     mirrorMode,
@@ -686,6 +756,7 @@ const HandActionLab: React.FC = () => {
     showLandmarkNames,
     showPinchVector,
     showDepth3D,
+    showDebugHUD,
     selectedLandmarkId,
     currentScenario,
     telemetry,
@@ -693,6 +764,8 @@ const HandActionLab: React.FC = () => {
     confidence,
     pinchThresholdMm,
     trackingEngine,
+    filterOptions,
+    debugMetrics,
   ]);
 
   useEffect(() => {
@@ -729,7 +802,6 @@ const HandActionLab: React.FC = () => {
       setSelectedLandmarkId(closestId);
       setDraggedLandmarkId(closestId);
     } else if (cameraMode === 'local_webcam') {
-      // Click to manually anchor hand box on user's hand in webcam view
       setYoloBbox({
         x: Math.round(p.x - 100),
         y: Math.round(p.y - 110),
@@ -755,7 +827,6 @@ const HandActionLab: React.FC = () => {
     setDraggedLandmarkId(null);
   };
 
-  // Capture frame from webcam and download
   const handleCaptureWebcamSnapshot = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -769,9 +840,18 @@ const HandActionLab: React.FC = () => {
 
   const selectedLmObj = landmarks.find((l) => l.id === selectedLandmarkId);
 
+  // Group landmarks for quality matrix
+  const fingerGroups = [
+    { name: '腕部关节点', ids: [0] },
+    { name: '大拇指 (Thumb)', ids: [1, 2, 3, 4] },
+    { name: '食指 (Index)', ids: [5, 6, 7, 8] },
+    { name: '中指 (Middle)', ids: [9, 10, 11, 12] },
+    { name: '无名指 (Ring)', ids: [13, 14, 15, 16] },
+    { name: '小指 (Pinky)', ids: [17, 18, 19, 20] },
+  ];
+
   return (
     <div style={{ padding: '16px 20px', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
-      {/* HTML5 Video element configured with position fixed to guarantee hardware frame decoding */}
       <video
         ref={videoRef}
         autoPlay
@@ -805,16 +885,18 @@ const HandActionLab: React.FC = () => {
                 : '预置车间工位仿真'}
             </Tag>
             <Tag color="cyan">{trackingEngine}</Tag>
+            <Tag color={filterOptions.enableSmoothing ? 'processing' : 'default'}>
+              {filterOptions.enableSmoothing ? `平滑滤波 (α=${filterOptions.smoothingFactor})` : '原始无滤波'}
+            </Tag>
             <Tag color="purple">YOLOv11-Hand 实时检测</Tag>
           </Space>
           <Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 4 }}>
-            实时从计算机本地摄像头捕获真实人手画面，实时提取 YOLO 检测框、21 点拓扑骨骼与微细动作（微捏取/握持/下压/危险探入）
+            实时从计算机本地摄像头捕获真实人手画面，集成 EMA 抖动平滑滤波、置信度阈值抑制与 21 关节点灵敏度捕获可视化监控
           </Text>
         </Col>
 
         <Col>
           <Space>
-            {/* Primary Toggle for Local Webcam */}
             {isWebcamActive ? (
               <Button
                 type="primary"
@@ -915,8 +997,11 @@ const HandActionLab: React.FC = () => {
                   <span>水平镜像翻转 (Mirror)</span>
                 </label>
               )}
-              <Tag color="blue">YOLO 推理延时: {webcamInferenceMs} ms</Tag>
-              <Tag color="cyan">刷新率: 35 FPS</Tag>
+              <Tag color="blue">推理延时: {debugMetrics.pipelineLatencyMs} ms</Tag>
+              <Tag color="cyan">帧率: {debugMetrics.inferenceFps} FPS</Tag>
+              <Tag color={debugMetrics.stabilityScore >= 90 ? 'green' : 'orange'}>
+                追踪稳定性: {debugMetrics.stabilityScore}%
+              </Tag>
             </Space>
           </Col>
         </Row>
@@ -1122,7 +1207,7 @@ const HandActionLab: React.FC = () => {
               >
                 {cameraMode === 'local_webcam'
                   ? isHandInView
-                    ? '✔ 已成功锁定人手骨骼！做「双指捏合/握拳/单指下压」动作即可触发实时识别'
+                    ? `✔ 追踪中 (${debugMetrics.capturedCount}/21点) | 抖动消除: -${Math.max(0, Math.round((1 - debugMetrics.smoothedJitterPx / Math.max(0.1, debugMetrics.rawJitterPx)) * 100))}%`
                     : '⚠ 请将人手平举于摄像头画面中间（若未锁定可直接点击画面中手部位置进行校准）'
                   : '提示: 可直接用鼠标拖动拇指尖(4)或食指尖(8)等节点，实时测试细微动作判别阈值'}
               </div>
@@ -1131,7 +1216,7 @@ const HandActionLab: React.FC = () => {
             {/* Bottom Canvas Controls */}
             <Row justify="space-between" align="middle" style={{ marginTop: 10, color: '#94a3b8' }}>
               <Col>
-                <Space size={16}>
+                <Space size={14} wrap>
                   <label style={{ fontSize: 12, cursor: 'pointer' }}>
                     <Switch size="small" checked={showYoloBbox} onChange={setShowYoloBbox} /> YOLO 检测框
                   </label>
@@ -1147,11 +1232,14 @@ const HandActionLab: React.FC = () => {
                   <label style={{ fontSize: 12, cursor: 'pointer' }}>
                     <Switch size="small" checked={showDepth3D} onChange={setShowDepth3D} /> 3D 深度渲染
                   </label>
+                  <label style={{ fontSize: 12, cursor: 'pointer' }}>
+                    <Switch size="small" checked={showDebugHUD} onChange={setShowDebugHUD} /> 调试HUD
+                  </label>
                 </Space>
               </Col>
               <Col>
                 <Text style={{ color: '#64748b', fontSize: 12 }}>
-                  算法: {trackingEngine} + YOLOv11-Hand (640x640) | 800×450
+                  算法: {trackingEngine} + EMA抖动平滑 | 800×450
                 </Text>
               </Col>
             </Row>
@@ -1202,7 +1290,7 @@ const HandActionLab: React.FC = () => {
           </Card>
         </Col>
 
-        {/* Right Configuration Panels */}
+        {/* Right Configuration Panels (Including Debug & Sensitivity Inspector) */}
         <Col xs={24} lg={9} xl={8}>
           <Card size="small" style={{ borderRadius: 8, height: '100%' }} bodyStyle={{ padding: 12 }}>
             <Tabs
@@ -1212,7 +1300,7 @@ const HandActionLab: React.FC = () => {
                   key: 'camera_source',
                   label: (
                     <span>
-                      <VideoCameraOutlined /> 本地相机接入
+                      <VideoCameraOutlined /> 相机接入
                     </span>
                   ),
                   children: (
@@ -1226,7 +1314,8 @@ const HandActionLab: React.FC = () => {
                           <div><strong>视频协议:</strong> WebRTC MediaStream (HTML5)</div>
                           <div><strong>手部捕获状态:</strong> {isHandInView ? <Tag color="green">已实时锁定骨骼</Tag> : <Tag color="orange">等待手部入画</Tag>}</div>
                           <div><strong>AI 检测模型:</strong> {trackingEngine} (21 Landmarks) + YOLOv11</div>
-                          <div><strong>实时推理延时:</strong> {webcamInferenceMs} ms (~35 FPS)</div>
+                          <div><strong>平滑处理机制:</strong> {filterOptions.enableSmoothing ? <Tag color="blue">EMA 动态低通滤波 (α={filterOptions.smoothingFactor})</Tag> : <Tag>关闭滤波</Tag>}</div>
+                          <div><strong>实时推理延时:</strong> {webcamInferenceMs} ms (~{debugMetrics.inferenceFps} FPS)</div>
                         </div>
 
                         <Divider style={{ margin: '10px 0' }} />
@@ -1252,10 +1341,190 @@ const HandActionLab: React.FC = () => {
                   ),
                 },
                 {
+                  key: 'debug_panel',
+                  label: (
+                    <span>
+                      <FilterOutlined /> 调试与灵敏度
+                    </span>
+                  ),
+                  children: (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {/* Real-time Health Diagnostics */}
+                      <Card size="small" title="实时捕获健康度与灵敏度监测" style={{ backgroundColor: '#f8fafc' }}>
+                        <Row gutter={[8, 8]}>
+                          <Col span={12}>
+                            <Statistic
+                              title="关键点捕获有效率"
+                              value={`${debugMetrics.capturedCount}/21`}
+                              suffix={`(${(debugMetrics.capturedCount / 21 * 100).toFixed(0)}%)`}
+                              valueStyle={{ fontSize: 16, color: debugMetrics.capturedCount >= 18 ? '#10b981' : '#f59e0b', fontWeight: 'bold' }}
+                            />
+                            <Progress
+                              percent={Math.round((debugMetrics.capturedCount / 21) * 100)}
+                              size="small"
+                              strokeColor={debugMetrics.capturedCount >= 18 ? '#10b981' : '#f59e0b'}
+                              showInfo={false}
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="空间追踪稳定性得分"
+                              value={debugMetrics.stabilityScore}
+                              suffix="%"
+                              valueStyle={{ fontSize: 16, color: '#0284c7', fontWeight: 'bold' }}
+                            />
+                            <div style={{ fontSize: 11, color: '#64748b' }}>
+                              滤波抖动: {debugMetrics.rawJitterPx}px ➔ {debugMetrics.smoothedJitterPx}px
+                            </div>
+                          </Col>
+                        </Row>
+                      </Card>
+
+                      {/* Filter & Smoothing Controls */}
+                      <Card size="small" title="平滑处理与置信度过滤参数">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {/* Smoothing Switch & Factor Slider */}
+                          <div>
+                            <Row justify="space-between" align="middle">
+                              <Text strong style={{ fontSize: 12 }}>EMA 动态平滑滤波</Text>
+                              <Switch
+                                size="small"
+                                checked={filterOptions.enableSmoothing}
+                                onChange={(val) => handleUpdateFilter({ enableSmoothing: val })}
+                              />
+                            </Row>
+                            {filterOptions.enableSmoothing && (
+                              <div style={{ marginTop: 6 }}>
+                                <Row justify="space-between">
+                                  <Text type="secondary" style={{ fontSize: 11 }}>平滑阻尼因子 (α): {filterOptions.smoothingFactor}</Text>
+                                  <Text style={{ fontSize: 11, color: '#0284c7' }}>
+                                    {filterOptions.smoothingFactor <= 0.4 ? '超高平滑' : filterOptions.smoothingFactor <= 0.75 ? '平衡适中' : '高灵敏响应'}
+                                  </Text>
+                                </Row>
+                                <Slider
+                                  min={0.1}
+                                  max={1.0}
+                                  step={0.05}
+                                  value={filterOptions.smoothingFactor}
+                                  onChange={(v) => handleUpdateFilter({ smoothingFactor: v })}
+                                  marks={{ 0.1: '0.1平滑', 0.65: '0.65推荐', 1.0: '1.0原始' }}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <Divider style={{ margin: '4px 0' }} />
+
+                          {/* Outlier Jump Rejection */}
+                          <div>
+                            <Row justify="space-between" align="middle">
+                              <Text strong style={{ fontSize: 12 }}>异常突变跳跃抑制 (Outlier Rejection)</Text>
+                              <Switch
+                                size="small"
+                                checked={filterOptions.outlierRejection}
+                                onChange={(val) => handleUpdateFilter({ outlierRejection: val })}
+                              />
+                            </Row>
+                            {filterOptions.outlierRejection && (
+                              <div style={{ marginTop: 4 }}>
+                                <Row justify="space-between">
+                                  <Text type="secondary" style={{ fontSize: 11 }}>最大允许单帧跳变距离: {filterOptions.maxJumpDistancePx} px</Text>
+                                </Row>
+                                <Slider
+                                  min={30}
+                                  max={180}
+                                  step={5}
+                                  value={filterOptions.maxJumpDistancePx}
+                                  onChange={(v) => handleUpdateFilter({ maxJumpDistancePx: v })}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <Divider style={{ margin: '4px 0' }} />
+
+                          {/* Confidence Thresholds */}
+                          <div>
+                            <Row justify="space-between">
+                              <Text strong style={{ fontSize: 12 }}>手部目标检测置信度阈值 (Detection Conf)</Text>
+                              <Text strong style={{ color: '#0284c7' }}>{(filterOptions.minDetectionConfidence * 100).toFixed(0)}%</Text>
+                            </Row>
+                            <Slider
+                              min={0.2}
+                              max={0.8}
+                              step={0.05}
+                              value={filterOptions.minDetectionConfidence}
+                              onChange={(v) => handleUpdateFilter({ minDetectionConfidence: v })}
+                            />
+                          </div>
+
+                          <div>
+                            <Row justify="space-between">
+                              <Text strong style={{ fontSize: 12 }}>关节点连续追踪置信度阈值 (Tracking Conf)</Text>
+                              <Text strong style={{ color: '#0284c7' }}>{(filterOptions.minTrackingConfidence * 100).toFixed(0)}%</Text>
+                            </Row>
+                            <Slider
+                              min={0.2}
+                              max={0.8}
+                              step={0.05}
+                              value={filterOptions.minTrackingConfidence}
+                              onChange={(v) => handleUpdateFilter({ minTrackingConfidence: v })}
+                            />
+                          </div>
+
+                          <div>
+                            <Row justify="space-between">
+                              <Text strong style={{ fontSize: 12 }}>关键点可见度抑制阈值 (Min Visibility)</Text>
+                              <Text strong style={{ color: '#0284c7' }}>{(filterOptions.minVisibilityThreshold * 100).toFixed(0)}%</Text>
+                            </Row>
+                            <Slider
+                              min={0.2}
+                              max={0.8}
+                              step={0.05}
+                              value={filterOptions.minVisibilityThreshold}
+                              onChange={(v) => handleUpdateFilter({ minVisibilityThreshold: v })}
+                            />
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              低于此阈值的关节点将在画布上显示黄色虚线告警圈，提示局部光照不足或手指发生遮挡
+                            </Text>
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* 21 Keypoints Signal Quality Matrix */}
+                      <Card size="small" title="21 关节点实时信号捕获强度网格">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {fingerGroups.map((grp) => (
+                            <div key={grp.name} style={{ background: '#f8fafc', padding: '4px 8px', borderRadius: 4, fontSize: 11 }}>
+                              <div style={{ fontWeight: 600, color: '#334155', marginBottom: 2 }}>{grp.name}</div>
+                              <Space wrap size={[4, 4]}>
+                                {grp.ids.map((id) => {
+                                  const conf = debugMetrics.perLandmarkConf[id] ?? 0.95;
+                                  const isGood = conf >= 0.85;
+                                  const isWarn = conf >= filterOptions.minVisibilityThreshold && conf < 0.85;
+                                  return (
+                                    <Tag
+                                      key={id}
+                                      color={isGood ? 'green' : isWarn ? 'gold' : 'red'}
+                                      style={{ margin: 0, fontSize: 10, padding: '0 4px' }}
+                                    >
+                                      #{id} {(conf * 100).toFixed(0)}%
+                                    </Tag>
+                                  );
+                                })}
+                              </Space>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    </div>
+                  ),
+                },
+                {
                   key: 'telemetry',
                   label: (
                     <span>
-                      <NodeIndexOutlined /> 关节遥测与标定
+                      <NodeIndexOutlined /> 标定与阈值
                     </span>
                   ),
                   children: (
@@ -1375,7 +1644,7 @@ const HandActionLab: React.FC = () => {
                   key: 'scenarios',
                   label: (
                     <span>
-                      <ExperimentOutlined /> 工艺场景说明
+                      <ExperimentOutlined /> 工艺说明
                     </span>
                   ),
                   children: (
@@ -1412,7 +1681,7 @@ const HandActionLab: React.FC = () => {
         title={
           <Space>
             <CodeOutlined />
-            <span>生产级 Python 边缘推理代码 (MediaPipe Hands + YOLOv11 + Modbus TCP)</span>
+            <span>生产级 Python 边缘推理代码 (MediaPipe Hands + EMA Smoothing + YOLOv11)</span>
           </Space>
         }
         open={codeModalVisible}
