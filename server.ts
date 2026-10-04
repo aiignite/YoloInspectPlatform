@@ -4,6 +4,12 @@ import path from 'path';
 import fs from 'fs';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import { edgeVisionDaemon } from './src/server/edgeVisionDaemon';
+import { industrialCameraManager } from './src/server/industrialCameraManager';
+import { tensorRTManager } from './src/server/tensorrtManager';
+import { plcInterlockManager } from './src/server/plcInterlockManager';
+import { stereoVisionManager } from './src/server/stereoVisionManager';
+import { edgeResilienceManager } from './src/server/edgeResilienceManager';
 
 const app = express();
 const httpServer = createServer(app);
@@ -3771,12 +3777,198 @@ app.get('/api/reports/comparison', (_req, res) => {
 });
 
 // -------------------------------------------------------------
+// Edge Vision Daemon Microservice API (Scheme 01)
+// -------------------------------------------------------------
+app.get('/api/edge/status', (req, res) => {
+  res.json({ success: true, data: edgeVisionDaemon.getStatus() });
+});
+
+app.get('/api/edge/config', (req, res) => {
+  res.json({ success: true, data: edgeVisionDaemon.getConfig() });
+});
+
+app.post('/api/edge/config', (req, res) => {
+  edgeVisionDaemon.updateConfig(req.body);
+  res.json({ success: true, message: '已更新边缘工控机参数', data: edgeVisionDaemon.getConfig() });
+});
+
+app.get('/api/edge/alarm-slices', (req, res) => {
+  res.json({ success: true, data: edgeVisionDaemon.getAlarmSlices() });
+});
+
+app.post('/api/edge/trigger-alarm-slice', (req, res) => {
+  const reason = req.body?.reason || 'MANUAL_POKA_YOKE_TRIGGER';
+  const slice = edgeVisionDaemon.triggerAlarmSlice(reason);
+  res.json({ success: true, message: '已从环形缓冲区截断生成前后3秒告警切片', data: slice });
+});
+
+app.post('/api/edge/benchmark-test', (req, res) => {
+  const duration = req.body?.durationSec || 5;
+  const result = edgeVisionDaemon.runBenchmarkStressTest(duration);
+  res.json({ success: true, message: '边缘守护进程压测完成', data: result });
+});
+
+// -------------------------------------------------------------
+// Industrial Camera & Optics API (Scheme 02 - GigE Vision & GenICam)
+// -------------------------------------------------------------
+app.get('/api/industrial-camera/devices', (req, res) => {
+  res.json({ success: true, data: industrialCameraManager.getDevices() });
+});
+
+app.get('/api/industrial-camera/parameters', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      device: industrialCameraManager.getActiveDevice(),
+      parameters: industrialCameraManager.getParameters(),
+      triggerMetrics: industrialCameraManager.getTriggerMetrics(),
+    },
+  });
+});
+
+app.post('/api/industrial-camera/parameters', (req, res) => {
+  const updated = industrialCameraManager.updateParameters(req.body);
+  res.json({ success: true, message: '已更新工业相机与光学参数', data: updated });
+});
+
+app.get('/api/industrial-camera/triggers', (req, res) => {
+  res.json({ success: true, data: industrialCameraManager.getTriggerMetrics() });
+});
+
+app.post('/api/industrial-camera/trigger-pulse', (req, res) => {
+  const result = industrialCameraManager.fireSoftwareTrigger();
+  res.json({ success: true, message: '已触发一次硬件同步曝光采图', data: result });
+});
+
+app.get('/api/industrial-camera/optical-calc', (req, res) => {
+  const wd = Number(req.query.wd) || 520;
+  const fovW = Number(req.query.fov) || 600;
+  const sensor = (req.query.sensor as '1/2.9"' | '1/1.8"') || '1/1.8"';
+  const calc = industrialCameraManager.calculateOptics(wd, fovW, sensor);
+  res.json({ success: true, data: calc });
+});
+
+// -------------------------------------------------------------
+// TensorRT INT8 Acceleration & Quantization API (Scheme 03)
+// -------------------------------------------------------------
+app.get('/api/tensorrt/models', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      activeModel: tensorRTManager.getActiveModel(),
+      models: tensorRTManager.getModels(),
+    },
+  });
+});
+
+app.post('/api/tensorrt/deploy', (req, res) => {
+  const modelId = req.body?.modelId;
+  const result = tensorRTManager.deployModel(modelId);
+  res.json({ success: true, message: `已成功部署并热切换至推理引擎: ${result.activeModel.name}`, data: result });
+});
+
+app.get('/api/tensorrt/calibration-logs', (req, res) => {
+  res.json({ success: true, data: tensorRTManager.getCalibrationLogs() });
+});
+
+app.get('/api/tensorrt/benchmark', (req, res) => {
+  res.json({ success: true, data: tensorRTManager.runBenchmarkComparison() });
+});
+
+// -------------------------------------------------------------
+// PLC & Industrial Fieldbus Interlock API (Scheme 04)
+// -------------------------------------------------------------
+app.get('/api/plc/status', (req, res) => {
+  res.json({ success: true, data: plcInterlockManager.getStatus() });
+});
+
+app.post('/api/plc/write-register', (req, res) => {
+  const { address, value } = req.body;
+  const reg = plcInterlockManager.writeRegister(Number(address), Number(value));
+  res.json({ success: true, message: `已写入寄存器 4000${address % 1000} = ${value}`, data: reg });
+});
+
+app.post('/api/plc/trigger-interlock', (req, res) => {
+  const { type, reason } = req.body;
+  const evt = plcInterlockManager.triggerInterlock(type || 'POKA_YOKE', reason || '动作严重偏差');
+  res.json({ success: true, message: '已向 PLC 下发物理切断指令！', data: evt });
+});
+
+app.post('/api/plc/release-interlock', (req, res) => {
+  const { badgeId, operatorName } = req.body;
+  const result = plcInterlockManager.releaseInterlock(badgeId || 'TL-8820', operatorName || '产线主管');
+  res.json(result);
+});
+
+app.get('/api/plc/interlock-history', (req, res) => {
+  res.json({ success: true, data: plcInterlockManager.getEventsHistory() });
+});
+
+// -------------------------------------------------------------
+// Stereo Vision & Occlusion Triangulation API (Scheme 05)
+// -------------------------------------------------------------
+app.get('/api/stereo/config', (req, res) => {
+  res.json({ success: true, data: stereoVisionManager.getRigConfig() });
+});
+
+app.get('/api/stereo/scenarios', (req, res) => {
+  res.json({ success: true, data: stereoVisionManager.getScenarios() });
+});
+
+app.post('/api/stereo/simulate-occlusion', (req, res) => {
+  const scenarioId = req.body?.scenarioId || 'DORSAL_HAND_FLIP';
+  const scenario = stereoVisionManager.setOcclusionScenario(scenarioId);
+  res.json({ success: true, message: `已切换至遮挡实验工况: ${scenario.nameZh}`, data: scenario });
+});
+
+app.get('/api/stereo/landmarks-3d', (req, res) => {
+  res.json({ success: true, data: stereoVisionManager.getLiveStereoLandmarks3D() });
+});
+
+app.get('/api/stereo/benchmark-comparison', (req, res) => {
+  res.json({ success: true, data: stereoVisionManager.getBenchmarkComparison() });
+});
+
+// -------------------------------------------------------------
+// Edge Resilience & Privacy Protection API (Scheme 06)
+// -------------------------------------------------------------
+app.get('/api/resilience/status', (req, res) => {
+  res.json({ success: true, data: edgeResilienceManager.getStatus() });
+});
+
+app.post('/api/resilience/toggle-network', (req, res) => {
+  const online = req.body?.online;
+  const result = edgeResilienceManager.toggleNetworkState(online);
+  res.json({ success: true, data: result });
+});
+
+app.post('/api/resilience/trigger-sync', (req, res) => {
+  const result = edgeResilienceManager.triggerIncrementalSync();
+  res.json({ success: true, message: `已成功将 ${result.syncedCount} 条离线缓冲增量同步至厂级 MES 中心！`, data: result });
+});
+
+app.post('/api/resilience/trigger-storage-rotation', (req, res) => {
+  const result = edgeResilienceManager.triggerStorageRotation();
+  res.json({ success: true, message: `已执行 30 天 FIFO 老化轮转，清理 ${result.cleanedSnippetsCount} 个告警切片，释放 ${result.reclaimedGb} GB 磁盘空间！`, data: result });
+});
+
+app.get('/api/resilience/audit-report', (req, res) => {
+  res.json({ success: true, data: edgeResilienceManager.getComplianceAuditReport() });
+});
+
+// -------------------------------------------------------------
 // WebSocket Real-time Push Server
 // -------------------------------------------------------------
 const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname;
+  if (pathname === '/ws/edge-hand-stream') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      edgeVisionDaemon.registerClient(ws);
+    });
+    return;
+  }
   if (
     pathname.startsWith('/ws') ||
     pathname.startsWith('/api/live_monitor/ws') ||

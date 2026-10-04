@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package industrial.vision;
+
+option go_package = "industrial/vision/handaction";
+option java_package = "com.industrial.vision.handaction";
+
+// 21-Landmark Point in normalized coordinates
+message Landmark3D {
+  int32 id = 1;              // 0..20 (0: Wrist, 4: Thumb Tip, 8: Index Tip, etc.)
+  string name = 2;           // Landmark English Name
+  string name_zh = 3;        // Landmark Chinese Name
+  float x = 4;               // X coordinate (0..800 px)
+  float y = 5;               // Y coordinate (0..450 px)
+  float z = 6;               // Relative Depth (-50..50)
+  float visibility = 7;      // Detection confidence (0.0..1.0)
+}
+
+// Bounding box for YOLOv11-Hand
+message BoundingBox {
+  float x = 1;
+  float y = 2;
+  float w = 3;
+  float h = 4;
+  float confidence = 5;
+}
+
+// Andon Status Enum
+enum AndonStatus {
+  ANDON_NORMAL_GREEN = 0;   // In Spec, normal cycle
+  ANDON_WARNING_YELLOW = 1;  // Timing lag or minor deviation
+  ANDON_ALARM_RED = 2;       // Poka-Yoke interlock triggered / Hazard reach
+}
+
+// Primary Real-time Hand Action Payload (Broadcasted at 30~60 Hz over WebSocket/gRPC)
+message HandActionPayload {
+  string station_id = 1;                     // Workstation ID (e.g. "ST-SMT-A03")
+  uint64 sequence_number = 2;                // Incremental sequence ID for drop detection
+  int64 timestamp_ms = 3;                    // Unix epoch in milliseconds
+  repeated Landmark3D landmarks = 4;         // 21 hand landmarks
+  BoundingBox hand_bbox = 5;                 // Tight YOLO hand bounding box
+  string action_type = 6;                    // e.g. "pinch_pickup", "tool_grasp", "precision_press"
+  string action_name_zh = 7;                 // e.g. "精密双指捏取 (Fine Pinch)"
+  float action_confidence = 8;               // 0.0..1.0
+  float pinch_distance_mm = 9;               // Distance between thumb tip and index tip in mm
+  float index_flexion_deg = 10;              // Index PIP joint flexion angle
+  float wrist_speed_mms = 11;                // Linear speed of wrist in mm/s
+  bool esd_strap_detected = 12;              // Whether ESD wrist strap is grounded
+  float distance_to_hazard_mm = 13;          // Distance to mechanical pinch hazard zone
+  float dtw_compliance_score = 14;           // 0..100 DTW score against golden baseline
+  string dtw_grade = 15;                     // "A+", "A", "B", "C", "D"
+  AndonStatus andon = 16;                    // Real-time Andon status
+  float edge_inference_latency_ms = 17;      // Edge TensorRT inference latency (ms)
+}
+
+// Edge Daemon System Health & Watchdog Heartbeat (Broadcasted every 1000ms)
+message EdgeHeartbeat {
+  string station_id = 1;
+  int64 timestamp_ms = 2;
+  float cpu_usage_percent = 3;               // e.g. 14.5%
+  float memory_used_mb = 4;                  // e.g. 340 MB
+  float gpu_temperature_c = 5;               // e.g. 48.5 C
+  float inference_fps = 6;                   // e.g. 45.2 FPS
+  uint64 uptime_seconds = 7;
+  bool camera_connected = 8;
+  string camera_model = 9;                   // e.g. "Hikrobot MV-CS020-10GM (GigE Vision)"
+  uint64 ring_buffer_cached_frames = 10;     // Number of 10s rolling frames in memory
+  float packet_loss_rate = 11;               // 0.00%
+}
+
+// Request to slice 6-second video buffer (3s before + 3s after alarm)
+message AlarmSliceRequest {
+  string station_id = 1;
+  int64 trigger_timestamp_ms = 2;
+  string alarm_reason = 3;                   // e.g. "POKA_YOKE_STEP_SKIP" or "NIP_HAZARD"
+}
+
+message AlarmSliceResponse {
+  bool success = 1;
+  string slice_id = 2;
+  string download_url = 3;
+  int32 duration_sec = 4;
+  int64 file_size_bytes = 5;
+  string message = 6;
+}
