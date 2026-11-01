@@ -1887,7 +1887,7 @@ export const WaveSolderInspectionLab: React.FC = () => {
                 <div style={{ fontWeight: 600, marginBottom: 6 }}>4. 采用算法路线</div>
                 <Alert
                   type="info"
-                  message={
+                  title={
                     algorithmMode === 'yolo_tpvg'
                       ? 'TPVG-YOLO：采用双锥体引脚定点空间注意力，对 THT 引脚识别精准度极高'
                       : algorithmMode === 'bvae_anomaly'
@@ -1961,7 +1961,7 @@ export const WaveSolderInspectionLab: React.FC = () => {
             label: bm.name.split(':')[0],
             children: (
               <div>
-                <Alert type="success" message={bm.name} description={bm.description} style={{ marginBottom: 16 }} />
+                <Alert type="success" title={bm.name} description={bm.description} style={{ marginBottom: 16 }} />
 
                 <Row gutter={[16, 16]}>
                   <Col span={12}>

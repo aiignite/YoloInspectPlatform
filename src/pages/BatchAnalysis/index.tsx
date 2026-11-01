@@ -233,7 +233,7 @@ const BatchAnalysis: React.FC = () => {
           <Space orientation="vertical" size={16} style={{ width: '100%' }}>
             {/* Flywheel Banner */}
             <Alert
-              message="主动学习飞轮数据闭环 (Active Learning Flywheel)"
+              title="主动学习飞轮数据闭环 (Active Learning Flywheel)"
               description="本批次视频在离线推断中自动发现 14 处贴片偏移与 6 处引脚虚焊疑难微瑕疵，可一键提炼切片并追加至自学习标注集，无需人工反复切图标注！"
               type="info"
               showIcon

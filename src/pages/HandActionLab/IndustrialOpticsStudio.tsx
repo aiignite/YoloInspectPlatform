@@ -253,14 +253,14 @@ export const IndustrialOpticsStudio: React.FC = () => {
             <Statistic
               title="触发模式"
               value={triggerMode === 'On' ? '硬件Line1' : '连续拉流'}
-              valueStyle={{ fontSize: 14, color: '#0284c7' }}
+              styles={{ content: { fontSize: 14, color: '#0284c7' } }}
             />
           </Col>
           <Col span={8}>
             <Statistic
               title="累计触发脉冲"
               value={triggerMetrics.totalTriggerCount}
-              valueStyle={{ fontSize: 14, color: '#16a34a' }}
+              styles={{ content: { fontSize: 14, color: '#16a34a' } }}
             />
           </Col>
           <Col span={8}>
@@ -268,7 +268,7 @@ export const IndustrialOpticsStudio: React.FC = () => {
               title="触发抖动 (Jitter)"
               value={triggerMetrics.triggerJitterUs}
               suffix="μs"
-              valueStyle={{ fontSize: 14, color: triggerMetrics.triggerJitterUs <= 200 ? '#16a34a' : '#ef4444' }}
+              styles={{ content: { fontSize: 14, color: triggerMetrics.triggerJitterUs <= 200 ? '#16a34a' : '#ef4444' } }}
             />
           </Col>
         </Row>

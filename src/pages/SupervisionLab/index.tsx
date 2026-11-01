@@ -1530,7 +1530,7 @@ export const SupervisionLab: React.FC = () => {
                   children: (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <Alert
-                        message="工业现场 PLC 自动化联动已连接"
+                        title="工业现场 PLC 自动化联动已连接"
                         description="基于 Modbus TCP / GPIO 24V 高电平信号。当 PolygonZone 发生入侵或检测到严重缺陷时自动触发剔除气缸与 Andon 声光报警灯。"
                         type="info"
                         showIcon
@@ -1689,7 +1689,7 @@ export const SupervisionLab: React.FC = () => {
         {selectedObject && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Alert
-              message={
+              title={
                 selectedObject.category === 'defect'
                   ? `【严重告警】识别到质检不良品: ${selectedObject.defectName || selectedObject.className}`
                   : `【合格】在检工件: ${selectedObject.className}`

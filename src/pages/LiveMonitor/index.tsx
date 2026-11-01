@@ -335,23 +335,29 @@ const LiveMonitor: React.FC = () => {
       >
         <div style={{ position: 'relative', width: '100%', aspectRatio: isExpanded ? '16/9' : '4/3' }}>
           {feed.isLocal ? (
-            <video
-              id={`video_${feed.id}`}
-              autoPlay
-              playsInline
-              muted
-              ref={(el) => {
-                if (el && feed.streamRef && el.srcObject !== feed.streamRef) {
-                  el.srcObject = feed.streamRef;
-                }
-              }}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                display: 'block',
-              }}
-            />
+            feed.streamRef ? (
+              <video
+                id={`video_${feed.id}`}
+                autoPlay
+                playsInline
+                muted
+                ref={(el) => {
+                  if (el && feed.streamRef && el.srcObject !== feed.streamRef) {
+                    el.srcObject = feed.streamRef;
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
+              />
+            ) : (
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                本地摄像头视频流载入中...
+              </div>
+            )
           ) : (
             <img
               src={`${API_BASE}/live/stream/${feed.source}?mode=${feed.mode}&conf=${feed.confidence}&iou=${feed.iou}&fps=${feed.fps}`}

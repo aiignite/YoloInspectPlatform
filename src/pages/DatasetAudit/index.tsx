@@ -309,12 +309,12 @@ const DatasetAudit: React.FC = () => {
           type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message={t('pages.datasetAudit.blockedTitle')}
+          title={t('pages.datasetAudit.blockedTitle')}
           description={t('pages.datasetAudit.blockedDesc')}
         />
       )}
       {!summary?.blocked && summary && summary.total > 0 && (
-        <Alert type="success" showIcon style={{ marginBottom: 16 }} message={t('pages.datasetAudit.allGood')} />
+        <Alert type="success" showIcon style={{ marginBottom: 16 }} title={t('pages.datasetAudit.allGood')} />
       )}
 
       <Row gutter={16}>

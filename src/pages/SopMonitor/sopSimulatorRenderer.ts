@@ -154,6 +154,7 @@ interface RenderSimOptions {
   showSkeleton: boolean;
   showBBoxes: boolean;
   showZoneRois: boolean;
+  perspective?: 'wide' | 'macro';
 }
 
 export function drawWorkstationSim(opts: RenderSimOptions) {
@@ -168,7 +169,15 @@ export function drawWorkstationSim(opts: RenderSimOptions) {
     showSkeleton,
     showBBoxes,
     showZoneRois,
+    perspective = 'wide',
   } = opts;
+
+  ctx.save();
+  if (perspective === 'macro') {
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(1.35, 1.35);
+    ctx.translate(-width / 2 + 10, -height / 2 + 15);
+  }
 
   // 1. Draw Factory Workbench ESD Mat Background
   ctx.fillStyle = '#111827'; // Dark industrial slate
@@ -472,6 +481,20 @@ export function drawWorkstationSim(opts: RenderSimOptions) {
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 12px sans-serif';
     ctx.fillText(`🚨 SOP偏差警报: ${activeDeviation.description}`, 45, 385);
+    ctx.restore();
+  }
+
+  ctx.restore(); // Restore base transform
+
+  if (perspective === 'macro') {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 242, 254, 0.9)';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('🔍 CAM-02: PCB/手部微距特写视角 (Macro 1.35x Optical Focus)', 24, 32);
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.35)';
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(width / 2 - 80, height / 2 - 60, 160, 120);
+    ctx.setLineDash([]);
     ctx.restore();
   }
 }

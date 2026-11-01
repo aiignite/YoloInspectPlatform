@@ -167,11 +167,11 @@ export const ResiliencePrivacyStudio: React.FC = () => {
               title="本地待同步缓冲队列"
               value={status?.sync?.offlineBufferedRecordsCount ?? 0}
               suffix="条"
-              valueStyle={{
+              styles={{ content: {
                 fontSize: 20,
                 fontWeight: 'bold',
                 color: (status?.sync?.offlineBufferedRecordsCount ?? 0) > 0 ? '#d97706' : '#16a34a',
-              }}
+              } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>DuckDB FIFO 队列</div>
           </Col>
@@ -180,7 +180,7 @@ export const ResiliencePrivacyStudio: React.FC = () => {
               title="已累计同步至 MES"
               value={status?.sync?.totalSyncedRecords ?? 148200}
               suffix="条"
-              valueStyle={{ fontSize: 20, fontWeight: 'bold', color: '#0284c7' }}
+              styles={{ content: { fontSize: 20, fontWeight: 'bold', color: '#0284c7' } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>吞吐率 5,400 ops/s</div>
           </Col>
@@ -189,7 +189,7 @@ export const ResiliencePrivacyStudio: React.FC = () => {
               title="增量同步完成度"
               value={status?.sync?.syncProgressPct ?? 100}
               suffix="%"
-              valueStyle={{ fontSize: 20, fontWeight: 'bold', color: '#16a34a' }}
+              styles={{ content: { fontSize: 20, fontWeight: 'bold', color: '#16a34a' } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>带 MD5 校验与去重</div>
           </Col>

@@ -13,6 +13,27 @@ AntdConfigProvider.config({
   holderRender: (children) => children,
 });
 
+// Handle stale chunk or dynamic import failure gracefully across browser sessions
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    const error = event.reason;
+    if (
+      error instanceof TypeError &&
+      (error.message?.includes('dynamically imported module') ||
+        error.message?.includes('Failed to fetch'))
+    ) {
+      console.warn('[Global] Intercepted dynamic import failure:', error.message);
+      const retryKey = 'dynamic_import_reload_stamp';
+      const last = sessionStorage.getItem(retryKey);
+      const now = Date.now();
+      if (!last || now - Number(last) > 10000) {
+        sessionStorage.setItem(retryKey, String(now));
+        window.location.reload();
+      }
+    }
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider theme={googleMuiTheme}>

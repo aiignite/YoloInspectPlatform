@@ -558,7 +558,7 @@ const ModelOptimizer: React.FC = () => {
                       <Alert
                         type="info"
                         showIcon
-                        message="YoloCheck 核心速度优化关键技术"
+                        title="YoloCheck 核心速度优化关键技术"
                         description="针对工业级SMT产线与车间多路摄像头检测的高频痛点，我们设计了四重加速流水线："
                         style={{ marginBottom: 16 }}
                       />

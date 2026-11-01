@@ -541,25 +541,31 @@ export default function GoldenStandardLab() {
         }}
         footer={null}
         width={900}
-        destroyOnClose
+        destroyOnHidden
       >
         <Row gutter={[16, 16]}>
           <Col span={15}>
             <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#0f172a', borderRadius: 8, overflow: 'hidden' }}>
-              {!recordedBlobUrl ? (
+              {recordedBlobUrl ? (
+                <video
+                  src={recordedBlobUrl}
+                  controls
+                  playsInline
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : isRecording ? (
                 <video
                   ref={recordVideoRef}
-                  autoPlay
                   playsInline
                   muted
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
-                <video
-                  src={recordedBlobUrl}
-                  controls
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                />
+                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', background: '#0b1120' }}>
+                  <VideoCameraOutlined style={{ fontSize: 44, color: '#fbbf24', marginBottom: 12 }} />
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc' }}>标杆大师示范录制摄像头已就绪</div>
+                  <div style={{ fontSize: 12, marginTop: 4, color: '#64748b' }}>点击下方【开始现场录制】开启摄像头采集动作序列</div>
+                </div>
               )}
 
               <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(15, 23, 42, 0.85)', padding: '4px 10px', borderRadius: 4, color: '#fbbf24', fontSize: 12, fontFamily: 'monospace' }}>
@@ -704,7 +710,7 @@ export default function GoldenStandardLab() {
                     title="整体动作轨迹相似度"
                     value={compareResult.overall_similarity_pct}
                     suffix="%"
-                    valueStyle={{ color: compareResult.overall_similarity_pct >= 90 ? '#10b981' : '#f59e0b', fontWeight: 'bold' }}
+                    styles={{ content: { color: compareResult.overall_similarity_pct >= 90 ? '#10b981' : '#f59e0b', fontWeight: 'bold' } }}
                     prefix={<CheckCircleOutlined />}
                   />
                   <div style={{ fontSize: 11, color: '#64748b' }}>DTW 空间距离: {compareResult.dtw_distance}</div>
@@ -716,7 +722,7 @@ export default function GoldenStandardLab() {
                     title="总周期节拍时间差 (Δt)"
                     value={compareResult.total_duration_delta_sec > 0 ? `+${compareResult.total_duration_delta_sec}` : compareResult.total_duration_delta_sec}
                     suffix="s"
-                    valueStyle={{ color: Math.abs(compareResult.total_duration_delta_sec) <= 0.5 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}
+                    styles={{ content: { color: Math.abs(compareResult.total_duration_delta_sec) <= 0.5 ? '#10b981' : '#ef4444', fontWeight: 'bold' } }}
                     prefix={<ClockCircleOutlined />}
                   />
                   <div style={{ fontSize: 11, color: '#64748b' }}>公差信封带: ±0.3s</div>
@@ -728,7 +734,7 @@ export default function GoldenStandardLab() {
                     title="手势微细姿态吻合度"
                     value={98.6}
                     suffix="%"
-                    valueStyle={{ color: '#0284c7', fontWeight: 'bold' }}
+                    styles={{ content: { color: '#0284c7', fontWeight: 'bold' } }}
                     prefix={<AimOutlined />}
                   />
                   <div style={{ fontSize: 11, color: '#64748b' }}>捏距偏差: ±0.4mm</div>
@@ -739,7 +745,7 @@ export default function GoldenStandardLab() {
                   <Statistic
                     title="违规空间越界检测"
                     value="0 次 (无越界)"
-                    valueStyle={{ color: '#10b981', fontSize: 16, fontWeight: 'bold' }}
+                    styles={{ content: { color: '#10b981', fontSize: 16, fontWeight: 'bold' } }}
                     prefix={<SafetyCertificateOutlined />}
                   />
                   <div style={{ fontSize: 11, color: '#64748b' }}>符合几何防呆规则</div>

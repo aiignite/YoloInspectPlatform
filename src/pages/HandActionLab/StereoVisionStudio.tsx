@@ -184,11 +184,11 @@ export const StereoVisionStudio: React.FC = () => {
               title="当前物理 Z 轴深度 (World Z)"
               value={strokeResult?.currentZDepthMm ?? 45.0}
               suffix="mm"
-              valueStyle={{
+              styles={{ content: {
                 fontSize: 22,
                 fontWeight: 'bold',
                 color: strokeResult?.isWithinEnvelope ? '#16a34a' : '#d97706',
-              }}
+              } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>
               目标公差: 45.0 ± 0.65 mm
@@ -199,7 +199,7 @@ export const StereoVisionStudio: React.FC = () => {
               title="三维解算综合置信度"
               value={indexTip ? +(indexTip.fusedConfidence * 100).toFixed(0) : 98}
               suffix="%"
-              valueStyle={{ fontSize: 22, fontWeight: 'bold', color: '#0284c7' }}
+              styles={{ content: { fontSize: 22, fontWeight: 'bold', color: '#0284c7' } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>
               单帧融合耗时: <strong>0.8 ms</strong>
@@ -210,7 +210,7 @@ export const StereoVisionStudio: React.FC = () => {
               title="垂直下压到位判定准召率"
               value={strokeResult?.accuracyConfidencePct ?? 99.6}
               suffix="%"
-              valueStyle={{ fontSize: 22, fontWeight: 'bold', color: '#8b5cf6' }}
+              styles={{ content: { fontSize: 22, fontWeight: 'bold', color: '#8b5cf6' } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>
               彻底杜绝假压虚接与压坏阻容

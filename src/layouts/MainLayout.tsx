@@ -25,6 +25,7 @@ import {
   Security,
   GppGood,
   PanTool,
+  ViewInAr,
   Build,
   Waves,
   Speed,
@@ -212,6 +213,10 @@ const MainLayout: React.FC = () => {
                 <ListItemIcon sx={{ minWidth: 32, color: '#0284c7' }}><PanTool fontSize="small" /></ListItemIcon>
                 <ListItemText primary={<Typography variant="body2" sx={{ fontSize: 13, fontWeight: isCurrent('/hand-action-lab') ? 600 : 400 }}>手部微动作识别与标定</Typography>} />
               </ListItemButton>
+              <ListItemButton selected={isCurrent('/digital-twin')} onClick={() => navigate('/digital-twin')} sx={{ borderRadius: 2, mb: 0.25 }}>
+                <ListItemIcon sx={{ minWidth: 32, color: '#6366f1' }}><ViewInAr fontSize="small" /></ListItemIcon>
+                <ListItemText primary={<Typography variant="body2" sx={{ fontSize: 13, fontWeight: isCurrent('/digital-twin') ? 600 : 400 }}>3D 数字孪生工位</Typography>} />
+              </ListItemButton>
               <ListItemButton selected={isCurrent('/model-optimizer')} onClick={() => navigate('/model-optimizer')} sx={{ borderRadius: 2, mb: 0.25 }}>
                 <ListItemIcon sx={{ minWidth: 32, color: '#ed6c02' }}><Speed fontSize="small" /></ListItemIcon>
                 <ListItemText primary={<Typography variant="body2" sx={{ fontSize: 13 }}>模型响应加速超频</Typography>} />
@@ -334,6 +339,10 @@ const MainLayout: React.FC = () => {
               <ListItemButton selected={isCurrent('/storage')} onClick={() => navigate('/storage')} sx={{ borderRadius: 2, mb: 0.25 }}>
                 <ListItemIcon sx={{ minWidth: 32 }}><Storage fontSize="small" /></ListItemIcon>
                 <ListItemText primary={<Typography variant="body2" sx={{ fontSize: 13 }}>{t('menu.storage') || '存储与配额'}</Typography>} />
+              </ListItemButton>
+              <ListItemButton selected={isCurrent('/google-drive')} onClick={() => navigate('/google-drive')} sx={{ borderRadius: 2, mb: 0.25 }}>
+                <ListItemIcon sx={{ minWidth: 32, color: '#34a853' }}><CloudQueue fontSize="small" /></ListItemIcon>
+                <ListItemText primary={<Typography variant="body2" sx={{ fontSize: 13, fontWeight: isCurrent('/google-drive') ? 600 : 400 }}>Google Drive 云同步</Typography>} />
               </ListItemButton>
               <ListItemButton selected={isCurrent('/users')} onClick={() => navigate('/users')} sx={{ borderRadius: 2, mb: 0.25 }}>
                 <ListItemIcon sx={{ minWidth: 32 }}><People fontSize="small" /></ListItemIcon>

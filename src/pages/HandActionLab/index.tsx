@@ -48,6 +48,7 @@ import {
   VideoCameraOutlined,
   CameraOutlined,
   DesktopOutlined,
+  DeploymentUnitOutlined,
   CheckOutlined,
   ScanOutlined,
   LoadingOutlined,
@@ -107,6 +108,8 @@ import { IndustrialOpticsStudio } from './IndustrialOpticsStudio';
 import { TensorRTStudio } from './TensorRTStudio';
 import { PlcInterlockStudio } from './PlcInterlockStudio';
 import { StereoVisionStudio } from './StereoVisionStudio';
+import { DigitalTwin3DStudio } from './DigitalTwin3DStudio';
+import { ActionLifecycleStudio } from './ActionLifecycleStudio';
 import { ResiliencePrivacyStudio } from './ResiliencePrivacyStudio';
 import api from '../../utils/api';
 
@@ -1350,22 +1353,23 @@ const HandActionLab: React.FC = () => {
 
   return (
     <div style={{ padding: '16px 20px', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          position: 'fixed',
-          top: -9999,
-          left: -9999,
-          width: 640,
-          height: 480,
-          opacity: 0,
-          pointerEvents: 'none',
-          zIndex: -1,
-        }}
-      />
+      {cameraMode === 'local_webcam' && (
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          style={{
+            position: 'fixed',
+            top: -9999,
+            left: -9999,
+            width: 640,
+            height: 480,
+            opacity: 0,
+            pointerEvents: 'none',
+            zIndex: -1,
+          }}
+        />
+      )}
 
       {/* Top Header Bar */}
       <Row justify="space-between" align="middle" style={{ marginBottom: 14 }}>
@@ -1533,10 +1537,10 @@ const HandActionLab: React.FC = () => {
               }
               value={telemetry.pinchDistanceMm}
               suffix="mm"
-              valueStyle={{
+              styles={{ content: {
                 color: telemetry.pinchDistanceMm <= pinchThresholdMm ? '#06b6d4' : '#64748b',
                 fontWeight: 'bold',
-              }}
+              } }}
             />
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
               阈值: ≤{pinchThresholdMm}mm (拇指尖-食指尖)
@@ -1561,10 +1565,10 @@ const HandActionLab: React.FC = () => {
               }
               value={telemetry.distanceToNipHazardMm}
               suffix="mm"
-              valueStyle={{
+              styles={{ content: {
                 color: telemetry.distanceToNipHazardMm < nipHazardDistanceMm ? '#ef4444' : '#10b981',
                 fontWeight: 'bold',
-              }}
+              } }}
             />
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
               安全阈值: ≥{nipHazardDistanceMm}mm
@@ -1582,7 +1586,7 @@ const HandActionLab: React.FC = () => {
                 </Space>
               }
               value={`${telemetry.indexFlexionAngleDeg}°`}
-              valueStyle={{ color: '#8b5cf6', fontWeight: 'bold' }}
+              styles={{ content: { color: '#8b5cf6', fontWeight: 'bold' } }}
             />
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
               近端关节 (Index PIP) 屈曲
@@ -1606,11 +1610,11 @@ const HandActionLab: React.FC = () => {
                 </Space>
               }
               value={esdStrapDetected ? '已闭环佩戴 (OK)' : '未佩戴 / 脱落 (NG)'}
-              valueStyle={{
+              styles={{ content: {
                 color: esdStrapDetected ? '#22c55e' : '#ef4444',
                 fontSize: 15,
                 fontWeight: 'bold',
-              }}
+              } }}
               suffix={
                 <Switch
                   size="small"
@@ -1635,7 +1639,7 @@ const HandActionLab: React.FC = () => {
                 <Tag color={isWebcamActive ? (isHandInView ? 'green' : 'gold') : 'geekblue'}>
                   {isWebcamActive ? (isHandInView ? '实时摄像头手部骨骼追踪' : '等待手部入画...') : currentScenario.workstation}
                 </Tag>
-                <Divider type="vertical" />
+                <Divider orientation="vertical" />
                 <Tooltip title={isPlaying ? '暂停检测' : '继续检测'}>
                   <Button
                     size="small"
@@ -1675,7 +1679,7 @@ const HandActionLab: React.FC = () => {
                 </Tag>
               </Space>
             }
-            bodyStyle={{ padding: 12, backgroundColor: '#0f172a' }}
+            styles={{ body: { padding: 12, backgroundColor: '#0f172a' } }}
             style={{ borderRadius: 8, overflow: 'hidden' }}
           >
             <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
@@ -1812,7 +1816,7 @@ const HandActionLab: React.FC = () => {
 
         {/* Right Configuration Panels (Including DTW Golden Sequence Comparison) */}
         <Col xs={24} lg={9} xl={9}>
-          <Card size="small" style={{ borderRadius: 8, height: '100%' }} bodyStyle={{ padding: 12 }}>
+          <Card size="small" style={{ borderRadius: 8, height: '100%' }} styles={{ body: { padding: 12 } }}>
             <Tabs
               defaultActiveKey="edge_gateway"
               items={[
@@ -1846,7 +1850,7 @@ const HandActionLab: React.FC = () => {
                               title="边缘 CPU 负载"
                               value={edgeHeartbeat.cpu_usage_percent}
                               suffix="%"
-                              valueStyle={{ fontSize: 16, color: '#0284c7', fontWeight: 'bold' }}
+                              styles={{ content: { fontSize: 16, color: '#0284c7', fontWeight: 'bold' } }}
                             />
                             <Progress percent={Math.round(edgeHeartbeat.cpu_usage_percent)} size="small" strokeColor="#0284c7" showInfo={false} />
                           </Col>
@@ -1855,7 +1859,7 @@ const HandActionLab: React.FC = () => {
                               title="边缘 GPU 温度"
                               value={edgeHeartbeat.gpu_temperature_c}
                               suffix="°C"
-                              valueStyle={{ fontSize: 16, color: edgeHeartbeat.gpu_temperature_c < 65 ? '#10b981' : '#f59e0b', fontWeight: 'bold' }}
+                              styles={{ content: { fontSize: 16, color: edgeHeartbeat.gpu_temperature_c < 65 ? '#10b981' : '#f59e0b', fontWeight: 'bold' } }}
                             />
                             <div style={{ fontSize: 11, color: '#64748b' }}>常驻内存: {edgeHeartbeat.memory_used_mb} MB (零泄漏)</div>
                           </Col>
@@ -1864,7 +1868,7 @@ const HandActionLab: React.FC = () => {
                               title="推理与传输帧率"
                               value={edgeHeartbeat.inference_fps}
                               suffix="FPS"
-                              valueStyle={{ fontSize: 16, color: '#16a34a', fontWeight: 'bold' }}
+                              styles={{ content: { fontSize: 16, color: '#16a34a', fontWeight: 'bold' } }}
                             />
                             <div style={{ fontSize: 11, color: '#64748b' }}>引擎: TensorRT INT8</div>
                           </Col>
@@ -1873,7 +1877,7 @@ const HandActionLab: React.FC = () => {
                               title="网络端到端 RTT"
                               value={edgeHeartbeat.network_rtt_ms}
                               suffix="ms"
-                              valueStyle={{ fontSize: 16, color: '#06b6d4', fontWeight: 'bold' }}
+                              styles={{ content: { fontSize: 16, color: '#06b6d4', fontWeight: 'bold' } }}
                             />
                             <div style={{ fontSize: 11, color: '#64748b' }}>零丢包 (0.00%)</div>
                           </Col>
@@ -1989,6 +1993,24 @@ const HandActionLab: React.FC = () => {
                   children: <StereoVisionStudio />,
                 },
                 {
+                  key: 'digital_twin_3d',
+                  label: (
+                    <span>
+                      <DesktopOutlined style={{ color: '#6366f1' }} /> 3D数字孪生与视场干涉演练
+                    </span>
+                  ),
+                  children: <DigitalTwin3DStudio />,
+                },
+                {
+                  key: 'action_lifecycle',
+                  label: (
+                    <span>
+                      <DeploymentUnitOutlined style={{ color: '#ec4899' }} /> 作业动作识别与全流程防呆
+                    </span>
+                  ),
+                  children: <ActionLifecycleStudio />,
+                },
+                {
                   key: 'resilience_privacy',
                   label: (
                     <span>
@@ -2101,11 +2123,11 @@ const HandActionLab: React.FC = () => {
                                 title="动作综合合规得分"
                                 value={dtwResult.overallScore}
                                 suffix="分"
-                                valueStyle={{
+                                styles={{ content: {
                                   color: dtwResult.overallScore >= 90 ? '#16a34a' : '#d97706',
                                   fontSize: 28,
                                   fontWeight: 'bold',
-                                }}
+                                } }}
                               />
                             </Col>
                             <Col span={14} style={{ textAlign: 'right' }}>
@@ -2224,7 +2246,7 @@ const HandActionLab: React.FC = () => {
                       </Card>
 
                       <Alert
-                        message="摄像头实时手势识别指南"
+                        title="摄像头实时手势识别指南"
                         description="把手举在电脑摄像头前：1.「大拇指与食指捏在一起」直接识别为精密双指捏取；2.「握拳」识别为工具稳固握持；3.「伸出食指单指点击」识别为垂直微下压；4. 把手移到右上角红色警示框立即触发危险探入急停！"
                         type="info"
                         showIcon
@@ -2249,7 +2271,7 @@ const HandActionLab: React.FC = () => {
                               title="关键点捕获有效率"
                               value={`${debugMetrics.capturedCount}/21`}
                               suffix={`(${(debugMetrics.capturedCount / 21 * 100).toFixed(0)}%)`}
-                              valueStyle={{ fontSize: 16, color: debugMetrics.capturedCount >= 18 ? '#10b981' : '#f59e0b', fontWeight: 'bold' }}
+                              styles={{ content: { fontSize: 16, color: debugMetrics.capturedCount >= 18 ? '#10b981' : '#f59e0b', fontWeight: 'bold' } }}
                             />
                             <Progress
                               percent={Math.round((debugMetrics.capturedCount / 21) * 100)}
@@ -2263,7 +2285,7 @@ const HandActionLab: React.FC = () => {
                               title="空间追踪稳定性得分"
                               value={debugMetrics.stabilityScore}
                               suffix="%"
-                              valueStyle={{ fontSize: 16, color: '#0284c7', fontWeight: 'bold' }}
+                              styles={{ content: { fontSize: 16, color: '#0284c7', fontWeight: 'bold' } }}
                             />
                             <div style={{ fontSize: 11, color: '#64748b' }}>
                               滤波抖动: {debugMetrics.rawJitterPx}px ➔ {debugMetrics.smoothedJitterPx}px
@@ -2554,7 +2576,7 @@ const HandActionLab: React.FC = () => {
                       </Card>
 
                       <Alert
-                        message="工业现场手部识别难点与对策"
+                        title="工业现场手部识别难点与对策"
                         description="防静电丁腈手套反光容易造成RGB模型分割断裂，推荐结合近红外补光(850nm)与拓扑几何图卷积网络(GCN)，在强光照变化下保持21关节点亚毫米级定位。"
                         type="info"
                         showIcon

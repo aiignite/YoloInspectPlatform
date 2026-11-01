@@ -3930,6 +3930,100 @@ app.get('/api/stereo/benchmark-comparison', (req, res) => {
 });
 
 // -------------------------------------------------------------
+// Digital Twin 3D Workstation API (Dimension 03)
+// -------------------------------------------------------------
+const digitalTwinRig = {
+  camAHeightMm: 500,
+  camBAngleDeg: 45,
+  camBWorkingDistMm: 350,
+  overlapVolumeMm3: 16128000,
+  overlapRatioPct: 86.4,
+  clearanceMarginMm: 125.4,
+  isInterlocked: false,
+  interlockReason: '',
+  cutoffLatencyMs: 33.3,
+  solenoidState: 'ENERGIZED',
+};
+
+app.get('/api/digital-twin/status', (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      ...digitalTwinRig,
+      workstation: {
+        tableDimensionsMm: [860, 24, 620],
+        conveyorBeltLengthMm: 940,
+        cylinderStrokeMm: 80,
+        safetyThresholdZMm: 45.0,
+      },
+      plcRegisters: {
+        40001: 1204,
+        40004: digitalTwinRig.isInterlocked ? 1 : 0,
+        40005: digitalTwinRig.isInterlocked ? 1 : 0,
+      },
+    },
+  });
+});
+
+app.post('/api/digital-twin/simulate-intrusion', (req, res) => {
+  const reason = req.body?.reason || '手指或异物探入冲压模具危险区 (Z < 45mm)';
+  digitalTwinRig.isInterlocked = true;
+  digitalTwinRig.interlockReason = reason;
+  digitalTwinRig.solenoidState = 'DEPRESSURIZED_CUT';
+
+  plcInterlockManager.writeRegister(40004, 1);
+  plcInterlockManager.writeRegister(40005, 1);
+
+  res.json({
+    success: true,
+    message: `[PLC 33.3ms 物理联锁触发] ${reason}`,
+    data: {
+      interlockActive: true,
+      cutoffLatencyMs: 33.3,
+      solenoidState: 'DEPRESSURIZED_CUT',
+      timestamp: Date.now(),
+    },
+  });
+});
+
+app.post('/api/digital-twin/reset-interlock', (_req, res) => {
+  digitalTwinRig.isInterlocked = false;
+  digitalTwinRig.interlockReason = '';
+  digitalTwinRig.solenoidState = 'ENERGIZED';
+
+  plcInterlockManager.writeRegister(40004, 0);
+  plcInterlockManager.writeRegister(40005, 0);
+
+  res.json({
+    success: true,
+    message: '班长刷卡放行：PLC 联锁复位，气源与电机恢复正常作业！',
+    data: {
+      interlockActive: false,
+      solenoidState: 'ENERGIZED',
+      timestamp: Date.now(),
+    },
+  });
+});
+
+app.post('/api/digital-twin/update-camera-rig', (req, res) => {
+  const { camAHeightMm, camBAngleDeg, camBWorkingDistMm } = req.body || {};
+  if (camAHeightMm) digitalTwinRig.camAHeightMm = camAHeightMm;
+  if (camBAngleDeg) digitalTwinRig.camBAngleDeg = camBAngleDeg;
+  if (camBWorkingDistMm) digitalTwinRig.camBWorkingDistMm = camBWorkingDistMm;
+
+  const vol = Math.round(420 * (digitalTwinRig.camAHeightMm / 500) * 320 * (digitalTwinRig.camBAngleDeg / 45) * 120);
+  digitalTwinRig.overlapVolumeMm3 = vol;
+  const ratio = +((vol / 18662400) * 100).toFixed(1);
+  digitalTwinRig.overlapRatioPct = Math.min(98.5, Math.max(72.0, ratio));
+
+  res.json({
+    success: true,
+    message: '相机安装几何拓扑已更新，已重新计算空间视锥相交重叠区',
+    data: digitalTwinRig,
+  });
+});
+
+// -------------------------------------------------------------
 // Edge Resilience & Privacy Protection API (Scheme 06)
 // -------------------------------------------------------------
 app.get('/api/resilience/status', (req, res) => {

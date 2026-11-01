@@ -30,8 +30,10 @@ import {
   Delete,
   CloudDone,
   PieChart,
+  CloudQueue,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 
 interface StorageRecord {
@@ -64,6 +66,7 @@ function formatSize(bytes: number): string {
 }
 
 const StorageManage: React.FC = () => {
+  const navigate = useNavigate();
   const [records, setRecords] = useState<StorageRecord[]>([]);
   const [stats, setStats] = useState<StorageStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -283,6 +286,15 @@ const StorageManage: React.FC = () => {
               disabled={loading}
             >
               刷新存储
+            </Button>
+
+            <Button
+              variant="contained"
+              sx={{ bgcolor: '#1a73e8', textTransform: 'none' }}
+              startIcon={<CloudQueue />}
+              onClick={() => navigate('/google-drive')}
+            >
+              Google Drive 云端同步
             </Button>
           </Box>
         </Box>

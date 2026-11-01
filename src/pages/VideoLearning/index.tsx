@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Card, Table, Button, Upload, Modal, Form, Input, Select, Tag, Progress,
   Space, message, Descriptions, Image, Row, Col, Statistic, Tabs, InputNumber,
-  Checkbox, Divider, Slider, Flex, Alert, Typography, Tooltip, notification,
+  Checkbox, Divider, Slider, Flex, Alert, Typography, Tooltip, notification, Steps,
 } from 'antd';
 import {
   UploadOutlined, PlayCircleOutlined, EyeOutlined,
@@ -10,6 +10,7 @@ import {
   RocketOutlined, SyncOutlined, ArrowRightOutlined, ToolOutlined, CheckCircleOutlined,
   AlertOutlined, SafetyCertificateOutlined, CopyOutlined, DownloadOutlined,
   SendOutlined, CheckOutlined, CameraOutlined, StopOutlined, RetweetOutlined,
+  SlidersOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -601,6 +602,50 @@ ${actions.map((a, i) => `| ${i + 1} | ${a.user_defined_name || a.action_name} | 
     }
   };
 
+  // Keyboard Shortcuts for Accelerated Video Analysis & Review
+  useEffect(() => {
+    if (!detailOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target as any).isContentEditable)) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.code === 'ArrowLeft' || e.code === 'KeyJ') {
+        e.preventDefault();
+        if (videoRef.current) {
+          const newTime = Math.max(0, videoRef.current.currentTime - 0.5);
+          videoRef.current.currentTime = newTime;
+          setCurrentTime(newTime);
+        }
+      } else if (e.code === 'ArrowRight' || e.code === 'KeyL') {
+        e.preventDefault();
+        if (videoRef.current) {
+          const maxDur = selectedTemplate?.duration_seconds || 100;
+          const newTime = Math.min(maxDur, videoRef.current.currentTime + 0.5);
+          videoRef.current.currentTime = newTime;
+          setCurrentTime(newTime);
+        }
+      } else if (e.code === 'KeyK') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key >= '1' && e.key <= '9') {
+        const stepNum = parseInt(e.key, 10);
+        const targetAction = actions.find((a) => a.step_order === stepNum);
+        if (targetAction) {
+          seekToAction(targetAction);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [detailOpen, isPlaying, actions, selectedTemplate?.duration_seconds]);
+
   // Canvas drawing loop
   useEffect(() => {
     const video = videoRef.current;
@@ -786,6 +831,68 @@ ${actions.map((a, i) => `| ${i + 1} | ${a.user_defined_name || a.action_name} | 
         </Row>
       </div>
 
+      {/* 4-Stage Fast Pipeline Card */}
+      <Card
+        size="small"
+        style={{
+          marginBottom: 16,
+          background: 'linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%)',
+          border: '1px solid #bfdbfe',
+        }}
+      >
+        <Row align="middle" justify="space-between" gutter={[16, 12]}>
+          <Col xs={24} lg={16}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <Tag color="blue" style={{ fontWeight: 600, padding: '2px 8px' }}>标准化极速流程</Tag>
+              <Text strong style={{ fontSize: 13, color: '#1e3a8a' }}>
+                操作步骤视频示教 ➔ 智能分解配置 ➔ 产线实时监控应用 4 步高效闭环
+              </Text>
+            </div>
+            <Steps
+              size="small"
+              current={1}
+              items={[
+                {
+                  title: '1. 示范视频录入',
+                  content: '工位实录或导入标杆视频',
+                  icon: <VideoCameraOutlined />,
+                },
+                {
+                  title: '2. AI 动作分解',
+                  content: 'YOLO目标与时序边界切分',
+                  icon: <AimOutlined />,
+                },
+                {
+                  title: '3. 敏捷微调与绑定',
+                  content: '工时公差与ROI防呆设定',
+                  icon: <SlidersOutlined />,
+                },
+                {
+                  title: '4. 一键发布监控',
+                  content: '下发SOP至产线在线运行',
+                  icon: <SafetyCertificateOutlined />,
+                },
+              ]}
+            />
+          </Col>
+          <Col xs={24} lg={8} style={{ textAlign: 'right' }}>
+            <Space orientation="vertical" align="end" size={4}>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                已有规范已投产？直达工位监控大屏
+              </Text>
+              <Button
+                type="primary"
+                style={{ background: '#059669', borderColor: '#059669', fontWeight: 600 }}
+                icon={<ArrowRightOutlined />}
+                onClick={() => navigate('/sop-monitor')}
+              >
+                前往产线过程监控台
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
       {/* Main Templates Table */}
       <Card
         title={
@@ -825,25 +932,31 @@ ${actions.map((a, i) => `| ${i + 1} | ${a.user_defined_name || a.action_name} | 
         }}
         footer={null}
         width={850}
-        destroyOnClose
+        destroyOnHidden
       >
         <Row gutter={[16, 16]}>
           <Col span={15}>
             <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#0f172a', borderRadius: 8, overflow: 'hidden' }}>
-              {!recordedBlobUrl ? (
+              {recordedBlobUrl ? (
+                <video
+                  src={recordedBlobUrl}
+                  controls
+                  playsInline
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : isRecording ? (
                 <video
                   ref={recordVideoRef}
-                  autoPlay
                   playsInline
                   muted
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
-                <video
-                  src={recordedBlobUrl}
-                  controls
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                />
+                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', background: '#0b1120' }}>
+                  <VideoCameraOutlined style={{ fontSize: 44, color: '#0284c7', marginBottom: 12 }} />
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc' }}>示范视频录制摄像头已就绪</div>
+                  <div style={{ fontSize: 12, marginTop: 4, color: '#64748b' }}>点击下方【开始现场实录】即可开启摄像头录制示范工步</div>
+                </div>
               )}
 
               {/* Viewfinder HUD Overlays */}
@@ -944,7 +1057,7 @@ ${actions.map((a, i) => `| ${i + 1} | ${a.user_defined_name || a.action_name} | 
         onCancel={() => setUploadOpen(false)}
         onOk={() => uploadForm.submit()}
         okText={t('common.upload')}
-        forceRender
+        destroyOnHidden
       >
         <Form form={uploadForm} layout="vertical" onFinish={handleUpload}>
           <Form.Item name="name" label={t('pages.videoLearning.templateName')} rules={[{ required: true }]}>
@@ -1003,7 +1116,7 @@ ${actions.map((a, i) => `| ${i + 1} | ${a.user_defined_name || a.action_name} | 
         onCancel={() => setDetailOpen(false)}
         footer={null}
         width={1280}
-        forceRender
+        destroyOnHidden
       >
         {selectedTemplate && (
           <Row gutter={16}>
@@ -1049,15 +1162,27 @@ ${actions.map((a, i) => `| ${i + 1} | ${a.user_defined_name || a.action_name} | 
             <Col span={17}>
               <Card size="small" title="示范视频回放与实时目标/骨骼/ROI图层">
                 <div style={{ position: 'relative', width: '100%', background: '#0f172a', borderRadius: 6, overflow: 'hidden' }}>
-                  <video
-                    ref={videoRef}
-                    src={videoUrl}
-                    style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 380 }}
-                    onTimeUpdate={() => {
-                      if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
-                    }}
-                    onEnded={() => setIsPlaying(false)}
-                  />
+                  {videoUrl ? (
+                    <video
+                      ref={videoRef}
+                      src={videoUrl}
+                      preload="metadata"
+                      playsInline
+                      style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 380 }}
+                      onTimeUpdate={() => {
+                        if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+                      }}
+                      onEnded={() => setIsPlaying(false)}
+                      onError={() => {
+                        console.warn('Video failed to load source:', videoUrl);
+                      }}
+                    />
+                  ) : (
+                    <div style={{ height: 260, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                      <VideoCameraOutlined style={{ fontSize: 36, marginBottom: 8 }} />
+                      <div>视频源加载中或未指定有效视频路径</div>
+                    </div>
+                  )}
                   <canvas
                     ref={overlayCanvasRef}
                     style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', width: '100%', height: '100%' }}
@@ -1074,7 +1199,10 @@ ${actions.map((a, i) => `| ${i + 1} | ${a.user_defined_name || a.action_name} | 
                     <Checkbox checked={showPose} onChange={(e) => setShowPose(e.target.checked)}>手部/人体骨骼</Checkbox>
                     <Checkbox checked={showZoneRois} onChange={(e) => setShowZoneRois(e.target.checked)}>工位空间ROI</Checkbox>
                   </Space>
-                  <Tag color="blue">{currentTime.toFixed(1)}s / {selectedTemplate.duration_seconds?.toFixed(1)}s</Tag>
+                  <Space>
+                    <Tag color="cyan">⌨️ 快捷键: [空格]播放/暂停 · [←/→]微调0.5s · [1~5]直达工步</Tag>
+                    <Tag color="blue">{currentTime.toFixed(1)}s / {selectedTemplate.duration_seconds?.toFixed(1)}s</Tag>
+                  </Space>
                 </div>
 
                 <Slider

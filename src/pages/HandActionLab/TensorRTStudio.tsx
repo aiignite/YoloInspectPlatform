@@ -126,7 +126,7 @@ export const TensorRTStudio: React.FC = () => {
               title="单帧端到端耗时"
               value={activeModel?.latencyMs ?? 2.1}
               suffix="ms"
-              valueStyle={{ fontSize: 20, color: '#16a34a', fontWeight: 'bold' }}
+              styles={{ content: { fontSize: 20, color: '#16a34a', fontWeight: 'bold' } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>提速 10.6x (原22.4ms)</div>
           </Col>
@@ -135,7 +135,7 @@ export const TensorRTStudio: React.FC = () => {
               title="实时吞吐帧率"
               value={activeModel?.fps ?? 476}
               suffix="FPS"
-              valueStyle={{ fontSize: 20, color: '#0284c7', fontWeight: 'bold' }}
+              styles={{ content: { fontSize: 20, color: '#0284c7', fontWeight: 'bold' } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>超高频零延迟捕获</div>
           </Col>
@@ -144,7 +144,7 @@ export const TensorRTStudio: React.FC = () => {
               title="GPU 显存占用"
               value={activeModel?.gpuMemoryMb ?? 320}
               suffix="MB"
-              valueStyle={{ fontSize: 20, color: '#8b5cf6', fontWeight: 'bold' }}
+              styles={{ content: { fontSize: 20, color: '#8b5cf6', fontWeight: 'bold' } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>节省 80% (原1620MB)</div>
           </Col>
@@ -153,7 +153,7 @@ export const TensorRTStudio: React.FC = () => {
               title="关键点定位 mAP@0.5"
               value={activeModel ? (activeModel.mAP50 * 100).toFixed(1) : 92.8}
               suffix="%"
-              valueStyle={{ fontSize: 20, color: '#f59e0b', fontWeight: 'bold' }}
+              styles={{ content: { fontSize: 20, color: '#f59e0b', fontWeight: 'bold' } }}
             />
             <div style={{ fontSize: 11, color: '#64748b' }}>精度损失仅 0.6%</div>
           </Col>

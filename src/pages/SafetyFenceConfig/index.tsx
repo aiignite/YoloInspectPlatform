@@ -1492,7 +1492,7 @@ const SafetyFenceConfig: React.FC = () => {
               )}
 
               {/* Scenario Preset Switcher */}
-              <Divider type="vertical" />
+              <Divider orientation="vertical" />
               <Select
                 value={activeScenarioId}
                 onChange={handleSwitchScenario}
@@ -1527,11 +1527,11 @@ const SafetyFenceConfig: React.FC = () => {
                 </Space>
               }
               value={estopRelayTripped ? 'TRIPPED 急停切断' : 'NORMAL 正常吸合'}
-              valueStyle={{
+              styles={{ content: {
                 color: estopRelayTripped ? '#ff4d4f' : '#52c41a',
                 fontSize: 16,
                 fontWeight: 'bold',
-              }}
+              } }}
               suffix={
                 estopRelayTripped ? (
                   <Button size="small" type="primary" danger onClick={handleResetEstop} style={{ marginLeft: 8 }}>
@@ -1559,7 +1559,7 @@ const SafetyFenceConfig: React.FC = () => {
                   ? '🟡 AMBER (减速预警)'
                   : '🟢 GREEN (全域安全)'
               }
-              valueStyle={{
+              styles={{ content: {
                 color:
                   andonTowerColor === 'red'
                     ? '#ff4d4f'
@@ -1568,7 +1568,7 @@ const SafetyFenceConfig: React.FC = () => {
                     : '#52c41a',
                 fontSize: 16,
                 fontWeight: 'bold',
-              }}
+              } }}
             />
           </Card>
         </Col>
@@ -1583,7 +1583,7 @@ const SafetyFenceConfig: React.FC = () => {
                 </Space>
               }
               value={`${zones.filter((z) => z.enabled).length} 个防区`}
-              valueStyle={{ fontSize: 16, fontWeight: 'bold' }}
+              styles={{ content: { fontSize: 16, fontWeight: 'bold' } }}
               suffix={`/ 目标池 ${objectCatalog.length} 类`}
             />
           </Card>
@@ -1599,7 +1599,7 @@ const SafetyFenceConfig: React.FC = () => {
                 </Space>
               }
               value={`v${currentCalibrationMeta.version}`}
-              valueStyle={{ color: '#1a73e8', fontSize: 16, fontWeight: 'bold' }}
+              styles={{ content: { color: '#1a73e8', fontSize: 16, fontWeight: 'bold' } }}
               suffix={
                 <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
                   {currentCalibrationMeta.lastSavedAt || '未保存'}
@@ -1643,7 +1643,7 @@ const SafetyFenceConfig: React.FC = () => {
                   </Radio.Button>
                 </Radio.Group>
 
-                <Divider type="vertical" />
+                <Divider orientation="vertical" />
 
                 <Tooltip title={isPlaying ? '暂停仿真/定格画面' : '恢复动态仿真视频流'}>
                   <Button
@@ -1688,7 +1688,7 @@ const SafetyFenceConfig: React.FC = () => {
                 </Button>
               </Space>
             }
-            bodyStyle={{ padding: 12, backgroundColor: '#0f172a' }}
+            styles={{ body: { padding: 12, backgroundColor: '#0f172a' } }}
             style={{ borderRadius: 8, overflow: 'hidden' }}
           >
             {/* Visual Canvas Container */}
@@ -1879,7 +1879,7 @@ const SafetyFenceConfig: React.FC = () => {
           <Card
             size="small"
             style={{ borderRadius: 8, height: '100%' }}
-            bodyStyle={{ padding: 12 }}
+            styles={{ body: { padding: 12 } }}
           >
             <Tabs
               defaultActiveKey="camera_manage"
@@ -2203,7 +2203,7 @@ const SafetyFenceConfig: React.FC = () => {
                           </div>
                         </div>
                       ) : (
-                        <Alert message="请选择或添加防区进行编辑" type="info" showIcon />
+                        <Alert title="请选择或添加防区进行编辑" type="info" showIcon />
                       )}
                     </div>
                   ),
@@ -2318,7 +2318,7 @@ const SafetyFenceConfig: React.FC = () => {
                           title="当前地坪比例尺系数"
                           value={mmPerPixel.toFixed(2)}
                           suffix="mm / 像素"
-                          valueStyle={{ color: '#1a73e8', fontSize: 16, fontWeight: 'bold' }}
+                          styles={{ content: { color: '#1a73e8', fontSize: 16, fontWeight: 'bold' } }}
                         />
                         <Text type="secondary" style={{ fontSize: 11 }}>
                           100 像素目标相当于地面实际物理宽度约 {(mmPerPixel * 100 / 10).toFixed(1)} cm

@@ -5,6 +5,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
+import GoogleSignInButton from '../../components/GoogleSignInButton';
+import { googleSignIn } from '../../services/googleDriveAuth';
 
 function getPasswordStrength(pwd: string): { percent: number; status: 'exception' | 'active' | 'success'; text: string } {
   let score = 0;
@@ -311,6 +313,28 @@ const Login: React.FC = () => {
               >
                 质检操作员
               </Button>
+            </div>
+
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', margin: '12px 0' }}>
+                <div style={{ flex: 1, height: 1, backgroundColor: '#e2e8f0' }} />
+                <span style={{ padding: '0 8px', color: '#94a3b8', fontSize: 12 }}>或使用 Google Workspace 账号</span>
+                <div style={{ flex: 1, height: 1, backgroundColor: '#e2e8f0' }} />
+              </div>
+              <GoogleSignInButton
+                onClick={async () => {
+                  try {
+                    const res = await googleSignIn();
+                    if (res) {
+                      await login('admin', 'password', true, { googleEmail: res.user.email });
+                      navigate('/google-drive');
+                    }
+                  } catch (e: any) {
+                    setErrorMsg(e.message || 'Google 登录失败');
+                  }
+                }}
+                text="使用 Google 账号快捷登录"
+              />
             </div>
           </Form>
 

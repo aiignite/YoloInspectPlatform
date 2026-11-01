@@ -17,6 +17,8 @@ import {
   Switch,
   message,
   Tooltip,
+  Segmented,
+  Tabs,
 } from 'antd';
 import {
   SafetyCertificateOutlined,
@@ -37,9 +39,20 @@ import {
   EyeOutlined,
   ArrowRightOutlined,
   BookOutlined,
+  VideoCameraOutlined,
+  SlidersOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
+  InfoCircleOutlined,
+  FilterOutlined,
+  SoundOutlined,
+  CameraOutlined,
+  BarChartOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
+import { SopPipelineDrawer } from './SopPipelineDrawer';
 import {
   DeviationType,
   DeviationSeverity,
@@ -135,14 +148,36 @@ export const SopMonitor: React.FC = () => {
 
   // Canvas visual toggles
   const [activeSpecification, setActiveSpecification] = useState<any>(null);
+  const [pipelineDrawerOpen, setPipelineDrawerOpen] = useState<boolean>(false);
+  const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
+  const [touchFriendlyMode, setTouchFriendlyMode] = useState<boolean>(false);
+  const [showPipGuide, setShowPipGuide] = useState<boolean>(true);
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [showSkeleton, setShowSkeleton] = useState<boolean>(true);
   const [showBBoxes, setShowBBoxes] = useState<boolean>(true);
   const [showZoneRois, setShowZoneRois] = useState<boolean>(true);
+  const [cameraPerspective, setCameraPerspective] = useState<'wide' | 'macro'>('wide');
+  const [voiceCoachEnabled, setVoiceCoachEnabled] = useState<boolean>(false);
+  const [selectedEventForEvidence, setSelectedEventForEvidence] = useState<DeviationEventRecord | null>(null);
+  const [activeTabKey, setActiveTabKey] = useState<string>('zones');
 
   // Canvas ref & animation loop
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const tickRef = useRef<number>(0);
+
+  // Web Speech API Digital Coach synthesis
+  const speakPrompt = useCallback((text: string) => {
+    if (!voiceCoachEnabled || typeof window === 'undefined' || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'zh-CN';
+      utter.rate = 1.05;
+      window.speechSynthesis.speak(utter);
+    } catch {
+      // SpeechSynthesis may fail silently if audio not allowed
+    }
+  }, [voiceCoachEnabled]);
 
   // Fetch initial status from server if available
   useEffect(() => {
@@ -242,6 +277,7 @@ export const SopMonitor: React.FC = () => {
         showSkeleton,
         showBBoxes,
         showZoneRois,
+        perspective: cameraPerspective,
       });
 
       if (isSimulating) {
@@ -262,6 +298,7 @@ export const SopMonitor: React.FC = () => {
     showSkeleton,
     showBBoxes,
     showZoneRois,
+    cameraPerspective,
   ]);
 
   // Trigger simulated deviation
@@ -371,8 +408,39 @@ export const SopMonitor: React.FC = () => {
     }
   };
 
+  // Quick Non-Defect False Alarm Exemption
+  const handleQuickBypass = () => {
+    setMonitorStatus((prev) => ({
+      ...prev,
+      andon_state: 'green',
+      plc_interlock_active: false,
+      active_deviation: null,
+    }));
+    message.success('已一键豁免非工艺良性动作 (如擦拭/翻单/清洁)，产线保持放行！');
+  };
+
+  const currentSopStep =
+    STANDARD_SOP_STEPS.find((s) => s.step_order === monitorStatus.current_step_order) ||
+    STANDARD_SOP_STEPS[0];
+
   return (
-    <div style={{ padding: '8px 12px' }}>
+    <div
+      style={
+        isKioskMode
+          ? {
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              zIndex: 9999,
+              overflowY: 'auto',
+              background: '#090d16',
+              padding: '12px 18px',
+            }
+          : { padding: '8px 12px' }
+      }
+    >
       {/* Top Banner: Industrial SOP Compliance Monitoring Header */}
       <div
         style={{
@@ -456,17 +524,86 @@ export const SopMonitor: React.FC = () => {
 
               {/* Quick Jump back to Calibration Workbench */}
               <Button
-                size="small"
-                type="primary"
+                size={touchFriendlyMode ? 'middle' : 'small'}
                 icon={<BookOutlined />}
-                style={{ background: '#096dd9', borderColor: '#096dd9' }}
                 onClick={() => navigate('/video-learning')}
               >
                 SOP动作标定与学习中心
               </Button>
+
+              <Button
+                size={touchFriendlyMode ? 'middle' : 'small'}
+                type="primary"
+                icon={<SlidersOutlined />}
+                style={{ background: '#722ed1', borderColor: '#722ed1' }}
+                onClick={() => setPipelineDrawerOpen(true)}
+              >
+                SOP全流程流转与微调
+              </Button>
+
+              <Button
+                size={touchFriendlyMode ? 'middle' : 'small'}
+                icon={isKioskMode ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+                style={isKioskMode ? { background: '#0284c7', borderColor: '#0284c7', color: '#fff' } : {}}
+                onClick={() => setIsKioskMode(!isKioskMode)}
+              >
+                {isKioskMode ? '退出大屏' : '大屏展台'}
+              </Button>
+
+              <Button
+                size={touchFriendlyMode ? 'middle' : 'small'}
+                type={touchFriendlyMode ? 'primary' : 'default'}
+                style={touchFriendlyMode ? { background: '#f59e0b', borderColor: '#f59e0b' } : {}}
+                onClick={() => setTouchFriendlyMode(!touchFriendlyMode)}
+              >
+                {touchFriendlyMode ? '触控大按钮 (已开)' : '触控模式'}
+              </Button>
             </Space>
           </Col>
         </Row>
+      </div>
+
+      {/* 4-Stage End-to-End Pipeline Quick Ribbon */}
+      <div
+        style={{
+          background: '#ffffff',
+          borderRadius: 8,
+          padding: '10px 16px',
+          marginBottom: 14,
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Tag color="geekblue" style={{ margin: 0, fontWeight: 600 }}>全流程闭环</Tag>
+          <Text style={{ fontSize: 12, color: '#334155' }}>
+            ① 示范视频录制采集 ➔ ② AI 动作时序分解 ➔ ③ 低代码敏捷微调 ➔ ④ 产线实时监控与 PLC 防呆
+          </Text>
+        </div>
+        <Space size="middle">
+          <Button
+            size="small"
+            type="link"
+            icon={<VideoCameraOutlined />}
+            onClick={() => navigate('/video-learning')}
+          >
+            示范视频示教中心
+          </Button>
+          <Divider orientation="vertical" />
+          <Button
+            size="small"
+            type="link"
+            icon={<SlidersOutlined />}
+            onClick={() => setPipelineDrawerOpen(true)}
+          >
+            现场工步微调 ({activeSpecification?.steps?.length || 4}个工步)
+          </Button>
+        </Space>
       </div>
 
       {/* Production KPIs Row */}
@@ -586,15 +723,25 @@ export const SopMonitor: React.FC = () => {
               <span style={{ fontWeight: 600 }}>SOP 标准工步时序流实时状态机 (Real-Time Action Sequence State Machine)</span>
             </Space>
             {monitorStatus.plc_interlock_active && (
-              <Button
-                size="small"
-                type="primary"
-                danger
-                icon={<UnlockOutlined />}
-                onClick={handleReleasePokaYoke}
-              >
-                主管授权解除气缸防呆锁止
-              </Button>
+              <Space>
+                <Button
+                  size={touchFriendlyMode ? 'middle' : 'small'}
+                  type="primary"
+                  danger
+                  icon={<UnlockOutlined />}
+                  onClick={handleReleasePokaYoke}
+                >
+                  主管授权解除气缸防呆锁止
+                </Button>
+                <Button
+                  size={touchFriendlyMode ? 'middle' : 'small'}
+                  icon={<FilterOutlined />}
+                  style={{ color: '#d97706', borderColor: '#fde68a', background: '#fefce8' }}
+                  onClick={handleQuickBypass}
+                >
+                  一键非工艺动作豁免 (免除停线)
+                </Button>
+              </Space>
             )}
           </div>
         }
@@ -757,6 +904,45 @@ export const SopMonitor: React.FC = () => {
                   />
                   SOP空间作业防区 (ROIs)
                 </span>
+                <span style={{ fontSize: 12 }}>
+                  <Switch
+                    size="small"
+                    checked={showPipGuide}
+                    onChange={setShowPipGuide}
+                    style={{ marginRight: 4 }}
+                  />
+                  画中画SOP标准示范
+                </span>
+                <span style={{ fontSize: 12 }}>
+                  <Switch
+                    size="small"
+                    checked={voiceCoachEnabled}
+                    onChange={(checked) => {
+                      setVoiceCoachEnabled(checked);
+                      if (checked) {
+                        message.success('已开启数字教练语音提示，将在工步切换与异常时智能播报');
+                        speakPrompt('数字教练语音已启动，进入工位监控');
+                      } else {
+                        message.info('已静音数字教练语音');
+                      }
+                    }}
+                    style={{ marginRight: 4 }}
+                  />
+                  <SoundOutlined /> 语音教练
+                </span>
+                <Segmented
+                  size="small"
+                  value={cameraPerspective}
+                  onChange={(val) => {
+                    const p = val as 'wide' | 'macro';
+                    setCameraPerspective(p);
+                    message.info(`已切换至: ${p === 'wide' ? '工位全局俯视视角 (Wide)' : 'PCB与手部微距特写视角 (Macro)'}`);
+                  }}
+                  options={[
+                    { label: '📷 全景俯视', value: 'wide' },
+                    { label: '🔍 微距特写', value: 'macro' },
+                  ]}
+                />
               </Space>
 
               <div style={{ fontSize: 11, color: '#00f2fe', fontFamily: 'monospace' }}>
@@ -806,6 +992,44 @@ export const SopMonitor: React.FC = () => {
                 <div>Active Step: #{monitorStatus.current_step_order} / 5</div>
                 <div>Deviation Mode: {monitorStatus.active_deviation ? '⚠️ VIOLATION DETECTED' : '✓ NORMAL'}</div>
               </div>
+
+              {/* Live Picture-in-Picture Standard SOP Guide Card */}
+              {showPipGuide && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 12,
+                    left: 12,
+                    background: 'rgba(15, 23, 42, 0.94)',
+                    backdropFilter: 'blur(6px)',
+                    padding: '10px 14px',
+                    borderRadius: 6,
+                    border: '1px solid #38bdf8',
+                    maxWidth: 340,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                    color: '#fff',
+                    zIndex: 10,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>
+                      📖 画中画 SOP 标准示范 · 工步 {currentSopStep.step_order}
+                    </span>
+                    <Tag color="cyan" style={{ fontSize: 9, lineHeight: '16px', margin: 0 }}>
+                      标准: {currentSopStep.standard_time_sec}s
+                    </Tag>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#f8fafc', marginBottom: 4 }}>
+                    {currentSopStep.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
+                    {currentSopStep.description}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#34d399', marginTop: 4 }}>
+                    ⚡ 防呆要点: 限定在 {monitorStatus.target_roi_name || '基准工装区'} 内精准闭环
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Action Simulation Scenario Sandbox */}
@@ -949,6 +1173,21 @@ export const SopMonitor: React.FC = () => {
                     </Tag>
                   ),
                 },
+                {
+                  title: '证据追溯',
+                  key: 'action',
+                  width: 95,
+                  render: (_, rec) => (
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<CameraOutlined />}
+                      onClick={() => setSelectedEventForEvidence(rec)}
+                    >
+                      抓拍证据
+                    </Button>
+                  ),
+                },
               ]}
             />
           </Card>
@@ -956,58 +1195,139 @@ export const SopMonitor: React.FC = () => {
 
         {/* Right: Workstation Spatial ROIs & Industrial Practice Guidelines */}
         <Col xs={24} xl={8}>
-          {/* Spatial Action ROI Catalog */}
-          <Card
-            title={
-              <Space>
-                <AimOutlined style={{ color: '#00f2fe' }} />
-                <span>工位动作空间范围标定目录 (Spatial Action ROIs)</span>
-              </Space>
-            }
-            size="small"
-            style={{ marginBottom: 14 }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {WORKSTATION_ZONES.map((zone) => {
-                const isCurrentActive =
-                  STANDARD_SOP_STEPS.find((s) => s.step_order === monitorStatus.current_step_order)
-                    ?.target_roi_id === zone.id;
+          <Card size="small" style={{ marginBottom: 14 }}>
+            <Tabs
+              activeKey={activeTabKey}
+              onChange={setActiveTabKey}
+              size="small"
+              items={[
+                {
+                  key: 'zones',
+                  label: (
+                    <span>
+                      <AimOutlined /> 空间防区标定 (ROIs)
+                    </span>
+                  ),
+                  children: (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                      {WORKSTATION_ZONES.map((zone) => {
+                        const isCurrentActive =
+                          STANDARD_SOP_STEPS.find((s) => s.step_order === monitorStatus.current_step_order)
+                            ?.target_roi_id === zone.id;
 
-                return (
-                  <div
-                    key={zone.id}
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 6,
-                      background: isCurrentActive ? '#e6f7ff' : '#fafafa',
-                      border: `1.5px solid ${isCurrentActive ? '#1890ff' : '#e8e8e8'}`,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, fontSize: 12 }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            background: zone.color,
-                            marginRight: 6,
-                          }}
-                        />
-                        {zone.name}
-                      </span>
-                      <Tag color={isCurrentActive ? 'processing' : 'default'} style={{ fontSize: 10 }}>
-                        {zone.code}
-                      </Tag>
+                        return (
+                          <div
+                            key={zone.id}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: 6,
+                              background: isCurrentActive ? '#e6f7ff' : '#fafafa',
+                              border: `1.5px solid ${isCurrentActive ? '#1890ff' : '#e8e8e8'}`,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 600, fontSize: 12 }}>
+                                <span
+                                  style={{
+                                    display: 'inline-block',
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: '50%',
+                                    background: zone.color,
+                                    marginRight: 6,
+                                  }}
+                                />
+                                {zone.name}
+                              </span>
+                              <Tag color={isCurrentActive ? 'processing' : 'default'} style={{ fontSize: 10 }}>
+                                {zone.code}
+                              </Tag>
+                            </div>
+                            <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
+                              {zone.description}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
-                      {zone.description}
+                  ),
+                },
+                {
+                  key: 'ie_analytics',
+                  label: (
+                    <span>
+                      <BarChartOutlined /> 节拍与瓶颈分析 (IE)
+                    </span>
+                  ),
+                  children: (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                      <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: 6, border: '1px solid #bbf7d0', fontSize: 11 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                          <span><strong>整线节拍效率:</strong> 94.6% (优)</span>
+                          <span><strong>稳定度:</strong> 96.2%</span>
+                        </div>
+                        <div style={{ color: '#166534' }}>当前线平衡率正常，工步间无严重堆料或假等待。</div>
+                      </div>
+
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#1e293b' }}>
+                        工步实测平均工时 vs 标准公差:
+                      </div>
+
+                      {STANDARD_SOP_STEPS.map((step) => {
+                        const isBottleneck = step.step_order === 2;
+                        const actualAvg = isBottleneck ? 5.1 : step.standard_time_sec * 0.96;
+                        const pctOfTakt = Math.round((actualAvg / 14.8) * 100);
+
+                        return (
+                          <div
+                            key={step.step_order}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: 6,
+                              background: isBottleneck ? '#fff7ed' : '#f8fafc',
+                              border: isBottleneck ? '1.5px solid #fdba74' : '1px solid #e2e8f0',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 600, fontSize: 12 }}>
+                                #{step.step_order} {step.name.slice(0, 10)}...
+                              </span>
+                              {isBottleneck ? (
+                                <Tag color="warning" style={{ fontSize: 10 }}>⚠️ 瓶颈工序 (35%)</Tag>
+                              ) : (
+                                <Tag color="success" style={{ fontSize: 10 }}>正常</Tag>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                              <span>标准: {step.standard_time_sec}s (±{step.tolerance_sec}s)</span>
+                              <span>实测均值: <strong style={{ color: isBottleneck ? '#ea580c' : '#059669' }}>{actualAvg.toFixed(1)}s</strong></span>
+                            </div>
+                            <Progress
+                              percent={pctOfTakt * 2.5}
+                              size="small"
+                              showInfo={false}
+                              strokeColor={isBottleneck ? '#f97316' : '#10b981'}
+                              style={{ margin: '4px 0 0 0' }}
+                            />
+                          </div>
+                        );
+                      })}
+
+                      <Alert
+                        type="info"
+                        showIcon
+                        title="IE 精益动作改善建议"
+                        description={
+                          <span style={{ fontSize: 11 }}>
+                            工步 2 (IC微插件) 动作耗时占总节拍 35%，由于引脚微调存在细微迟滞。建议工装升级为「预弯脚自定位治具」，预计可压减工时 1.2s，提高单班产能 14.3%。
+                          </span>
+                        }
+                      />
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  ),
+                },
+              ]}
+            />
           </Card>
 
           {/* Industrial Best Practices: Poka-Yoke & Action Supervision Architecture */}
@@ -1076,6 +1396,144 @@ export const SopMonitor: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Real-Time Deviation Evidence Snapshot Modal */}
+      <Modal
+        title={
+          <Space>
+            <CameraOutlined style={{ color: '#ff4d4f' }} />
+            <span>SOP 偏差瞬间视觉抓拍证据卡 ({selectedEventForEvidence?.id})</span>
+            {selectedEventForEvidence && (
+              <Tag color={selectedEventForEvidence.severity === 'critical' ? 'red' : 'orange'}>
+                {selectedEventForEvidence.severity === 'critical' ? '严重致命缺陷' : '主要工步偏差'}
+              </Tag>
+            )}
+          </Space>
+        }
+        open={!!selectedEventForEvidence}
+        onCancel={() => setSelectedEventForEvidence(null)}
+        footer={[
+          <Button key="close" onClick={() => setSelectedEventForEvidence(null)}>
+            关闭
+          </Button>,
+          <Button
+            key="export"
+            icon={<DownloadOutlined />}
+            onClick={() => {
+              message.success('已导出该偏差事件的数字质量证据包 (PNG/JSON)');
+            }}
+          >
+            导出证据卡
+          </Button>,
+          <Button
+            key="feedback"
+            type="primary"
+            style={{ background: '#722ed1', borderColor: '#722ed1' }}
+            onClick={() => {
+              message.success('已将该异常样本标记并回流至工艺工程模型库，用于后续自学习优化');
+              setSelectedEventForEvidence(null);
+            }}
+          >
+            标记为模型优化自学习样本
+          </Button>,
+        ]}
+        width={700}
+      >
+        {selectedEventForEvidence && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Visual Simulated Snapshot Canvas */}
+            <div
+              style={{
+                background: '#0f172a',
+                padding: '16px',
+                borderRadius: 8,
+                position: 'relative',
+                border: '1px solid #ef4444',
+                color: '#fff',
+                textAlign: 'center',
+              }}
+            >
+              <div
+                style={{
+                  height: 190,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'radial-gradient(circle, #1e293b 0%, #090d16 100%)',
+                  borderRadius: 6,
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                <div style={{ position: 'absolute', top: 12, left: 14, fontSize: 11, color: '#38bdf8', fontFamily: 'monospace' }}>
+                  CAM-01 4K-SNAPSHOT · REC: {selectedEventForEvidence.timestamp} · OPERATOR: {selectedEventForEvidence.operator_id}
+                </div>
+                <div style={{ position: 'absolute', top: 12, right: 14, fontSize: 11, color: '#ef4444', fontFamily: 'monospace', fontWeight: 'bold' }}>
+                  [VIOLATION DETECTED: {selectedEventForEvidence.deviation_type.toUpperCase()}]
+                </div>
+
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ border: '2px dashed #ef4444', padding: '12px 24px', borderRadius: 8, background: 'rgba(239, 68, 68, 0.15)', display: 'inline-block' }}>
+                    <div style={{ fontSize: 13, fontWeight: 'bold', color: '#fca5a5' }}>
+                      ⚠️ {selectedEventForEvidence.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>
+                      实测数值: {selectedEventForEvidence.actual_value} (标准: {selectedEventForEvidence.standard_value})
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ position: 'absolute', bottom: 10, left: 14, fontSize: 10, color: '#94a3b8' }}>
+                  工位: {selectedEventForEvidence.station_id} | 触发工步: #{selectedEventForEvidence.step_order} {selectedEventForEvidence.step_name}
+                </div>
+                <div style={{ position: 'absolute', bottom: 10, right: 14, fontSize: 10, color: '#4ade80' }}>
+                  气缸防呆状态: {selectedEventForEvidence.plc_interlock_triggered ? '气阀锁死 (INTERLOCKED)' : '声光预警 (WARN)'}
+                </div>
+              </div>
+            </div>
+
+            {/* Event Details Sheet */}
+            <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12 }}>
+              <Row gutter={[12, 8]}>
+                <Col span={12}>
+                  <strong>事件编号:</strong> {selectedEventForEvidence.id}
+                </Col>
+                <Col span={12}>
+                  <strong>发生时间:</strong> {selectedEventForEvidence.timestamp}
+                </Col>
+                <Col span={12}>
+                  <strong>责任操作员:</strong> {selectedEventForEvidence.operator_id} (李工 - SMT高级装配)
+                </Col>
+                <Col span={12}>
+                  <strong>归属工单 (MES):</strong> WO-20261101-SMT08
+                </Col>
+                <Col span={24}>
+                  <strong>异常详细诊断:</strong>
+                  <div style={{ color: '#475569', marginTop: 2 }}>{selectedEventForEvidence.description}</div>
+                </Col>
+              </Row>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* SOP Pipeline Orchestrator Drawer */}
+      <SopPipelineDrawer
+        open={pipelineDrawerOpen}
+        onClose={() => setPipelineDrawerOpen(false)}
+        activeSpecification={activeSpecification}
+        onSpecificationUpdated={(updated) => {
+          setActiveSpecification(updated);
+          if (updated.template_name) {
+            setMonitorStatus((prev) => ({
+              ...prev,
+              template_name: updated.template_name,
+              station_id: updated.station_id || prev.station_id,
+              takt_time_target: updated.total_cycle_sec || prev.takt_time_target,
+            }));
+          }
+        }}
+      />
     </div>
   );
 };

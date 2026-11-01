@@ -1638,7 +1638,7 @@ export const SolderInspectionLab: React.FC = () => {
               <Alert
                 type="warning"
                 banner
-                message={
+                title={
                   <Space style={{ width: '100%', justifyContent: 'space-between' }}>
                     <span>📐 <strong>标尺测量模式已激活</strong>：请在视口任意两点间点击并拖拽，系统将高精测算毫米物理间距与接触角。</span>
                     <Space size={8}>
@@ -2198,7 +2198,7 @@ export const SolderInspectionLab: React.FC = () => {
               <div>
                 <Alert
                   type="success"
-                  message={bm.name}
+                  title={bm.name}
                   description={bm.description}
                   style={{ marginBottom: 16 }}
                 />
